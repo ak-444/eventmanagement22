@@ -47,17 +47,10 @@
 
             <div class="mb-3">
                 <label for="password" class="form-label">Password</label>
-                <input type="password" class="form-control" id="password" name="password" required>
+                <input type="password" class="form-control" id="password" name="password" autocomplete="new-password" required>
             </div>
 
-            <div class="mb-3">
-                <label for="user_type" class="form-label">I am a:</label>
-                <select class="form-select" id="user_type" name="user_type" required>
-                    <option value="Student">Student</option>
-                    <option value="Event Organizer">Event Organizer</option>
-                    <option value="Faculty">Faculty</option>
-                </select>
-            </div>
+          
 
             <button type="submit" class="btn btn-primary w-100">Login</button>
 
