@@ -1,30 +1,47 @@
 <?php
-$conn = new mysqli('localhost', 'root', '', 'event_management');
+session_start(); // Start session for user type check
+include 'config.php'; // Include database connection
 
-// Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = trim($_POST['name']);
-    $email = trim($_POST['email']);
-    $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Retrieve form data
+    $name = $_POST['name'];
+    $email = $_POST['email'];
+    $password = password_hash($_POST['password'], PASSWORD_BCRYPT);
     $user_type = $_POST['user_type'];
+    $school_id = $_POST['school_id'];
+    $department = $_POST['department'];
 
-    // Insert user into the database
-    $stmt = $conn->prepare("INSERT INTO users (name, email, password, user_type) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("ssss", $name, $email, $password, $user_type);
+    // Default status for public registration
+    $status = 'pending';
 
-    if ($stmt->execute()) {
-        // Redirect to the registration page with a success flag
-        header("Location: register.php?success=1");
-        exit;
-    } else {
-        echo "Error: " . $stmt->error;
+    // If the current user is an admin, set status to approved
+    if (isset($_SESSION['user_type']) && $_SESSION['user_type'] == 'admin') {
+        $status = 'approved';
     }
 
-    $stmt->close();
+    // Prepare SQL statement
+    $sql = "INSERT INTO users (username, email, password, user_type, school_id, department, status) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    $stmt = $conn->prepare($sql);
+
+    if ($stmt) {
+        // Bind parameters
+        $stmt->bind_param("sssssss", $name, $email, $password, $user_type, $school_id, $department, $status);
+
+        // Execute the statement
+        if ($stmt->execute()) {
+            header("Location: register.php?success=1");
+            exit();
+        } else {
+            echo "Error: " . $stmt->error;
+        }
+
+        // Close statement
+        $stmt->close();
+    } else {
+        echo "Error preparing statement: " . $conn->error;
+    }
+
+    // Close connection
     $conn->close();
 }
 ?>

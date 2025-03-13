@@ -7,12 +7,10 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-if ($_SESSION['user_type'] == 'admin') {
-    $dashboardLink = 'admin_dashboard.php';  // Admin dashboard link
-} elseif ($_SESSION['user_type'] == 'staff') {
-    $dashboardLink = 'staff_dashboard.php';  // Staff dashboard link
-} else {
-    $dashboardLink = 'user_dashboard.php';  // User dashboard link
+// Ensure the user type is 'user' to show the user event calendar
+if ($_SESSION['user_type'] !== 'user') {
+    header("Location: " . $dashboardLink); // Redirect to the appropriate dashboard
+    exit();
 }
 ?>
 
@@ -26,7 +24,7 @@ if ($_SESSION['user_type'] == 'admin') {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
-    <title>Event Calendar</title>
+    <title>User Event Calendar</title>
     <style>
         body {
             display: flex;
@@ -80,18 +78,16 @@ if ($_SESSION['user_type'] == 'admin') {
 <body>
     <div class="sidebar">
         <h4 class="text-center">AU JAS</h4>
-        <a href="<?php echo $dashboardLink; ?>"><i class="bi bi-house-door"></i> Dashboard</a>
-        <a href="Event Calendar.php"><i class="bi bi-calendar"></i> Event Calendar</a>
-        <a href="Event Management.php"><i class="bi bi-gear"></i> Event Management</a>
-        <a href="user_management.php"><i class="bi bi-people"></i> User Management</a>
-        <a href="reports.php"><i class="bi bi-file-earmark-text"></i> Reports</a>
+        <a href="user_dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
+        <a href="user_eventCalendar.php"><i class="bi bi-calendar"></i> Event Calendar</a>
+        
     </div>
 
     <div class="content">
          <!-- Navbar -->
          <nav class="navbar navbar-light">
             <div class="container-fluid">
-                <span class="navbar-brand mb-0 h1" id="headerTitle">Dashboard</span>
+                <span class="navbar-brand mb-0 h1" id="headerTitle">User Event Calendar</span>
                 
                 <!-- User Info -->
                 <ul class="navbar-nav ms-auto">
@@ -117,11 +113,6 @@ if ($_SESSION['user_type'] == 'admin') {
 
         <div class="calendar-header">
             <input type="text" class="form-control search-bar" placeholder="Search events...">
-            <div>
-                <button class="btn btn-success">Months View</button>
-                <button class="btn btn-success">All Events</button>
-                <button class="btn btn-primary">Add Event</button>
-            </div>
         </div>
         
         <div id='calendar'></div>
@@ -134,8 +125,8 @@ if ($_SESSION['user_type'] == 'admin') {
                 initialView: 'dayGridMonth',
                 events: [
                     {
-                        title: 'Sample Event',
-                        start: '2025-02-15'
+                        title: 'User Event Example',
+                        start: '2025-02-18'
                     }
                 ]
             });

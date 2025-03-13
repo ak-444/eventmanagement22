@@ -135,9 +135,26 @@
       <div class="mb-3">
         <label for="user_type" class="form-label">User Type</label>
         <select class="form-select" id="user_type" name="user_type" required>
-          <option value="Student">Student</option>
-          <option value="Event Organizer">Admin</option>
-          <option value="Faculty">Faculty</option>
+          <option value="user">User</option>
+          <option value="staff">Staff</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label for="school_id" class="form-label">School ID</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-card-text"></i></span>
+          <input type="text" class="form-control" id="school_id" name="school_id" placeholder="Enter School ID" required>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="department" class="form-label">Department</label>
+        <select class="form-select" id="department" name="department" required>
+          <option value="Information Technology">Information Technology</option>
+          <option value="Accounting">Accounting</option>
+          <option value="Business">Business</option>
         </select>
       </div>
 

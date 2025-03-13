@@ -13,34 +13,61 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// CSRF token generation
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 // Handle event submission
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_event'])) {
-    $event_name = $conn->real_escape_string($_POST['event_name']);
-    $event_date = $conn->real_escape_string($_POST['event_date']);
-    $event_time = $conn->real_escape_string($_POST['event_time']);
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_event']) && $_POST['csrf_token'] == $_SESSION['csrf_token']) {
+    $event_name = $conn->real_escape_string(trim($_POST['event_name']));
+    $event_date = $conn->real_escape_string(trim($_POST['event_date']));
+    $event_description = $conn->real_escape_string(trim($_POST['event_description']));
+
+    // Insert the event into the database
+    $sql = "INSERT INTO events (event_name, event_date, event_description) 
+            VALUES ('$event_name', '$event_date', '$event_description')";
+
+        if ($conn->query($sql) === TRUE) {
+            $_SESSION['event_message'] = "New event created successfully!"; // Store the success message in the session
+            // Remove the following redirection lines to stop automatic redirection
+            // if ($_SESSION['user_type'] == 'admin') {
+            //     header("Location: admin_dashboard.php"); // Redirect to admin page
+            // } elseif ($_SESSION['user_type'] == 'staff') {
+            //     header("Location: staff_dashboard.php"); // Redirect to user page
+            // } else {
+            //     header("Location: user_page.php"); // Redirect to default page if user type is unknown
+            // }
+        } else {
+            echo "Error: " . $sql . "<br>" . $conn->error;
+        }
+}
+
+// Handle event deletion
+if (isset($_GET['delete_id'])) {
+    $delete_id = intval($_GET['delete_id']);
     
-    $sql = "INSERT INTO events (event_name, event_date, event_time) VALUES ('$event_name', '$event_date', '$event_time')";
+    // Prepare and delete the event from the database
+    $sql = "DELETE FROM events WHERE id = $delete_id";
+    
     if ($conn->query($sql) === TRUE) {
-        echo "<script>alert('Event added successfully!');</script>";
+        echo "Event deleted successfully!";
     } else {
-        echo "<script>alert('Error adding event: " . $conn->error . "');</script>";
+        echo "Error: " . $conn->error;
     }
 }
 
-// Handle event editing
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['edit_event'])) {
-    $event_id = $conn->real_escape_string($_POST['event_id']);
-    $event_name = $conn->real_escape_string($_POST['event_name']);
-    $event_date = $conn->real_escape_string($_POST['event_date']);
-    $event_time = $conn->real_escape_string($_POST['event_time']);
-    
-    $sql = "UPDATE events SET event_name='$event_name', event_date='$event_date', event_time='$event_time' WHERE id='$event_id'";
-    if ($conn->query($sql) === TRUE) {
-        echo "<script>alert('Event updated successfully!');</script>";
-    } else {
-        echo "<script>alert('Error updating event: " . $conn->error . "');</script>";
-    }
+if ($_SESSION['user_type'] == 'admin') {
+    $dashboardLink = 'admin_dashboard.php';  // Admin dashboard link
+} elseif ($_SESSION['user_type'] == 'staff') {
+    $dashboardLink = 'staff_dashboard.php';  // Staff dashboard link
+} else {
+    $dashboardLink = 'user_dashboard.php';  // User dashboard link
 }
+
+// Fetch existing events
+$sql = "SELECT * FROM events";
+$result = $conn->query($sql);
 ?>
 
 <!DOCTYPE html>
@@ -86,18 +113,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['edit_event'])) {
             padding: 20px;
             width: 100%;
         }
-        .form-container {
-            background: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        .navbar {
+            background-color: #ffffff;
+            border-bottom: 2px solid #e0e0e0;
+            padding: 15px;
         }
     </style>
 </head>
 <body>
     <div class="sidebar">
         <h4 class="text-center">AU JAS</h4>
-        <a href="dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
+        <a href="<?php echo $dashboardLink; ?>"><i class="bi bi-house-door"></i> Dashboard</a>
         <a href="Event Calendar.php"><i class="bi bi-calendar"></i> Event Calendar</a>
         <a href="Event Management.php"><i class="bi bi-gear"></i> Event Management</a>
         <a href="user_management.php"><i class="bi bi-people"></i> User Management</a>
@@ -105,7 +131,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['edit_event'])) {
     </div>
 
     <div class="content">
-
+        <!-- Navbar -->
         <nav class="navbar navbar-light">
             <div class="container-fluid">
                 <span class="navbar-brand mb-0 h1" id="headerTitle">Dashboard</span>
@@ -114,7 +140,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['edit_event'])) {
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <?php echo htmlspecialchars($_SESSION['user_name']); ?>
+                        <?php
+                        if (isset($_SESSION['username'])) {
+                            echo htmlspecialchars($_SESSION['username']);
+                        } else {
+                            echo "User not logged in";
+                        }
+                        ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                             <li><a class="dropdown-item" href="#">User Type: <?php echo htmlspecialchars($_SESSION['user_type']); ?></a></li>
@@ -126,26 +158,79 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['edit_event'])) {
             </div>
         </nav>
 
-        <div class="form-container">
-            <h4>Add/Edit Event</h4>
-            <form method="POST" action="">
-                <input type="hidden" name="event_id" id="event_id">
+        <!-- Add Event Form -->
+        <section class="mb-5">
+            <h2>Add New Event</h2>
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
                 <div class="mb-3">
-                    <label class="form-label">Event Name</label>
-                    <input type="text" class="form-control" name="event_name" id="event_name" required>
+                    <label for="event_name" class="form-label">Event Name</label>
+                    <input type="text" class="form-control" id="event_name" name="event_name" required>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Event Date</label>
-                    <input type="date" class="form-control" name="event_date" id="event_date" required>
+                    <label for="event_date" class="form-label">Event Date</label>
+                    <input type="date" class="form-control" id="event_date" name="event_date" required>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Event Time</label>
-                    <input type="time" class="form-control" name="event_time" id="event_time" required>
+                    <label for="event_description" class="form-label">Event Description</label>
+                    <textarea class="form-control" id="event_description" name="event_description" required></textarea>
                 </div>
                 <button type="submit" name="add_event" class="btn btn-primary">Add Event</button>
-                <button type="submit" name="edit_event" class="btn btn-warning">Edit Event</button>
             </form>
-        </div>
+        </section>
+
+        <!-- Success Message -->
+        <?php
+        if (isset($_SESSION['event_message'])) {
+            echo "<div class='alert alert-success'>" . $_SESSION['event_message'] . "</div>";
+            unset($_SESSION['event_message']);
+        }
+        ?>
+
+        <!-- Event List Section -->
+        <section>
+            <h2>All Events</h2>
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Event Name</th>
+                        <th>Event Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php
+                    if ($result->num_rows > 0) {
+                        while($row = $result->fetch_assoc()) {
+                            echo "<tr>
+                                    <td>" . $row['id'] . "</td>
+                                    <td>" . $row['event_name'] . "</td>
+                                    <td>" . $row['event_date'] . "</td>
+                                     <td>
+                                        <a href='?view_id=" . $row['id'] . "' class='btn btn-info btn-sm text-white'>
+                                            <i class='fas fa-eye'></i> View
+                                        </a> 
+                                        <a href='?edit_id=" . $row['id'] . "' class='btn btn-warning btn-sm text-white'>
+                                            <i class='fas fa-edit'></i> Edit
+                                        </a> 
+                                        <a href='?delete_id=" . $row['id'] . "' class='btn btn-danger btn-sm text-white' onclick='return confirm(\"Are you sure you want to delete this event?\");'>
+                                            <i class='fas fa-trash-alt'></i> Delete
+                                        </a>
+                                    </td>
+                                  </tr>";
+                        }
+                    } else {
+                        echo "<tr><td colspan='4'>No events available</td></tr>";
+                    }
+                    ?>
+                </tbody>
+            </table>
+        </section>
     </div>
 </body>
 </html>
+
+<?php
+$conn->close();
+?>
