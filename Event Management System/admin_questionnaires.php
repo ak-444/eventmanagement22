@@ -149,10 +149,12 @@ include 'sidebar.php';
     <?php
     // Fetch all questionnaires with event information and question count
     $sql = "SELECT q.id, q.title, q.description, q.created_at, e.event_name, 
-           (SELECT COUNT(*) FROM questions WHERE questionnaire_id = q.id) AS question_count
-           FROM questionnaires q
-           JOIN events e ON q.event_id = e.id
-           ORDER BY q.created_at DESC";
+        COUNT(qu.id) AS question_count
+        FROM questionnaires q
+        JOIN events e ON q.event_id = e.id
+        LEFT JOIN questions qu ON q.id = qu.questionnaire_id
+        GROUP BY q.id
+        ORDER BY q.created_at DESC";
     
     $result = $conn->query($sql);
     

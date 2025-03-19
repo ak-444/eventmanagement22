@@ -32,6 +32,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $description = $_POST['description'];
     $questions = $_POST['questions'];
 
+    if (empty($event_id) || empty($title)) {
+        echo "<script>alert('Please fill in all required fields.'); window.history.back();</script>";
+        exit();
+    }
+
+    if (empty($questions)) {
+        echo "<script>alert('Please add at least one question.'); window.history.back();</script>";
+        exit();
+    }
+
     // Insert questionnaire into the database
     $stmt = $conn->prepare("INSERT INTO questionnaires (event_id, title, description, created_at) VALUES (?, ?, ?, NOW())");
     $stmt->bind_param("iss", $event_id, $title, $description);
@@ -51,6 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     echo "<script>alert('Questionnaire added successfully!'); window.location.href='admin_questionnaires.php';</script>";
 }
+
+include 'sidebar.php';
 ?>
 
 <!DOCTYPE html>
@@ -163,44 +175,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
     <!-- Sidebar -->
-    <div class="sidebar">
-        <h4>AU JAS</h4>
+    <?php include 'sidebar.php'; ?>
         
-        <!-- Dashboard Link -->
-        <a href="<?= $dashboardLink ?>" class="<?= ($current_page == $dashboardLink) ? 'active' : '' ?>">
-            <i class="bi bi-house-door"></i> Dashboard
-        </a>
-
-        <!-- Event Calendar (common for all) -->
-        <a href="admin_Event Calendar.php" class="<?= ($current_page == 'admin_Event Calendar.php') ? 'active' : '' ?>">
-            <i class="bi bi-calendar"></i> Event Calendar
-        </a>
-
-        <?php if($user_type == 'admin') : ?>
-            <!-- Admin-only links -->
-            <a href="admin_Event Management.php" class="<?= ($current_page == 'admin_Event Management.php') ? 'active' : '' ?>">
-                <i class="bi bi-gear"></i> Event Management
-            </a>
-            <a href="admin_user management.php" class="<?= ($current_page == 'admin_user management.php') ? 'active' : '' ?>">
-                <i class="bi bi-people"></i> User Management
-            </a>
-        <?php elseif($user_type == 'staff') : ?>
-            <!-- Staff-only links -->
-            <a href="staff_event_management.php" class="<?= ($current_page == 'staff_event_management.php') ? 'active' : '' ?>">
-                <i class="bi bi-ticket-perforated"></i> Event Submissions
-            </a>
-        <?php endif; ?>
-
-        <!-- Questionnaires (common for all) -->
-        <a href="admin_questionnaires.php" class="<?= ($current_page == 'admin_questionnaires.php') ? 'active' : '' ?>">
-            <i class="bi bi-clipboard"></i> Questionnaires
-        </a>
-
-        <!-- Reports (common for all) -->
-        <a href="admin_reports.php" class="<?= ($current_page == 'reports.php') ? 'active' : '' ?>">
-            <i class="bi bi-file-earmark-text"></i> Reports
-        </a>
-    </div>
+    
 
     <div class="content">
         <nav class="navbar navbar-light">
@@ -255,7 +232,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="question-input">
                             <label for="question1" class="form-label">Question</label>
                             <div class="input-group mb-3">
-                                <input type="text" class="form-control" id="question1" name="temp_question" required>
+                            <input type="text" class="form-control" id="question1" name="temp_question">
                                 <button class="btn btn-outline-success" type="button" onclick="addQuestionToList()">Add</button>
                             </div>
                         </div>
@@ -287,6 +264,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 return;
             }
             
+            // Clear any previous error messages
+            const errorMessages = document.getElementsByClassName('error-message');
+            while(errorMessages.length > 0) {
+                errorMessages[0].parentNode.removeChild(errorMessages[0]);
+            }
+            
+            // Rest of your existing code...
             questionCount++;
             questions.push({
                 id: questionCount,

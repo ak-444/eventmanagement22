@@ -29,8 +29,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Validate form inputs
     if (!empty($event_name) && !empty($event_date) && !empty($event_time) && !empty($venue) && !empty($event_description)) {
-        $stmt = $conn->prepare("INSERT INTO events (event_name, event_date, event_time, venue, event_description) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssss", $event_name, $event_date, $event_time, $venue, $event_description);
+        $stmt = $conn->prepare("INSERT INTO events 
+        (event_name, event_date, event_time, venue, event_description, status) 
+        VALUES (?, ?, ?, ?, ?, 'Approved')"); // Directly set status to Approved
+
+    $stmt->bind_param("sssss", // Keep 5 's' as we're not binding status as parameter
+        $event_name, $event_date, $event_time, $venue, $event_description);
 
         if ($stmt->execute()) {
             echo "<script>alert('Event added successfully!'); window.location.href='admin_Event Management.php';</script>";
@@ -52,6 +56,7 @@ $result = $conn->query($sql);
 if (!$result) {
     die("Query failed: " . $conn->error);
 }
+include 'sidebar.php';
 ?>
 
 
@@ -141,14 +146,7 @@ if (!$result) {
 
 <body>
 
-    <div class="sidebar">
-        <h4>AU JAS</h4>
-        <a href="<?php echo $dashboardLink; ?>"><i class="bi bi-house-door"></i> Dashboard</a>
-        <a href="admin_Event Calendar.php"><i class="bi bi-calendar"></i> Event Calendar</a>
-        <a href="admin_Event Management.php" class="active"><i class="bi bi-gear"></i> Event Management</a>
-        <a href="admin_user management.php"><i class="bi bi-people"></i> User Management</a>
-        <a href="reports.php"><i class="bi bi-file-earmark-text"></i> Reports</a>
-    </div>
+<?php include 'sidebar.php'; ?>
 
 
     <div class="content">
