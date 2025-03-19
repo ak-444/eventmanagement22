@@ -29,6 +29,9 @@ $dashboardLink = match($user_type) {
         <a href="admin_user management.php" class="<?= ($current_page == 'admin_user_management.php') ? 'active' : '' ?>">
             <i class="bi bi-people"></i> User Management
         </a>
+        <a href="admin_questionnaires.php" class="<?= ($current_page == 'admin_questionnaires.php') ? 'active' : '' ?>">
+            <i class="bi bi-clipboard"></i> Questionnaires
+        </a>
     <?php elseif($user_type == 'staff') : ?>
         <!-- Staff-only links -->
         <a href="staff_event_management.php" class="<?= ($current_page == 'staff_event_management.php') ? 'active' : '' ?>">
@@ -37,10 +40,7 @@ $dashboardLink = match($user_type) {
     <?php endif; ?>
 
     <?php if($user_type == 'admin' || $user_type == 'staff') : ?>
-        <!-- Admin/Staff-only links -->
-        <a href="admin_questionnaires.php" class="<?= ($current_page == 'admin_questionnaires.php') ? 'active' : '' ?>">
-            <i class="bi bi-clipboard"></i> Questionnaires
-        </a>
+        <!-- Admin/Staff shared links -->
         <a href="admin_reports.php" class="<?= ($current_page == 'admin_reports.php') ? 'active' : '' ?>">
             <i class="bi bi-file-earmark-text"></i> Reports
         </a>

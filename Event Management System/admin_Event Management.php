@@ -186,17 +186,26 @@ include 'sidebar.php';
                                     <td>" . htmlspecialchars($row['event_time']) . "</td>
                                     <td>" . htmlspecialchars($row['venue']) . "</td>
                                     <td>
-                                        <a href='?view_id=" . $row['id'] . "' class='btn btn-info btn-sm text-white'><i class='bi bi-eye'></i> View</a>
-                                        <a href='?edit_id=" . $row['id'] . "' class='btn btn-warning btn-sm text-white'><i class='bi bi-pencil'></i> Edit</a>
-                                        <a href='?delete_id=" . $row['id'] . "' class='btn btn-danger btn-sm text-white' onclick='return confirm(\"Are you sure you want to delete this event?\");'><i class='bi bi-trash'></i> Delete</a>
+                                        <a href='admin_view_events.php?id=" . $row['id'] . "' class='btn btn-info btn-sm text-white'>
+                                            <i class='bi bi-eye'></i> View
+                                        </a>
+                                        <a href='admin_edit_events.php?id=" . $row['id'] . "' class='btn btn-warning btn-sm text-white'>
+                                            <i class='bi bi-pencil'></i> Edit
+                                        </a>
+                                        <a href='?delete_id=" . $row['id'] . "' class='btn btn-danger btn-sm text-white' 
+                                            onclick='return confirm(\"Are you sure you want to delete this event?\");'>
+                                            <i class='bi bi-trash'></i> Delete
+                                        </a>
                                     </td>
                                 </tr>";
                         }
                     } else {
-                        echo "<tr><td colspan='6'>No events available</td></tr>";
+                        echo "<tr><td colspan='6' class='text-center'>No events available</td></tr>";
                     }
                     ?>
                 </tbody>
+                            
+               
             </table>
         </section>
     </div>
