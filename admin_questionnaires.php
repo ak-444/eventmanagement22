@@ -7,52 +7,38 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+$current_page = basename($_SERVER['PHP_SELF']);
+include 'sidebar.php';
+
 // Handle delete action
 if (isset($_GET['delete_id'])) {
     $delete_id = $_GET['delete_id'];
     
-    $conn->begin_transaction();
-    try {
-        // 1. Delete from event_attendees
-        $stmt1 = $conn->prepare("DELETE FROM event_attendees WHERE event_id = ?");
-        $stmt1->bind_param("i", $delete_id);
-        $stmt1->execute();
-        $stmt1->close();
-        
-        // 2. Delete from event_staff
-        $stmt2 = $conn->prepare("DELETE FROM event_staff WHERE event_id = ?");
-        $stmt2->bind_param("i", $delete_id);
-        $stmt2->execute();
-        $stmt2->close();
-        
-        // 3. Delete from events
-        $stmt3 = $conn->prepare("DELETE FROM events WHERE id = ?");
-        $stmt3->bind_param("i", $delete_id);
-        $stmt3->execute();
-        $stmt3->close();
-        
-        $conn->commit();
-        
-        $_SESSION['success_message'] = "Event deleted successfully!";
-        header("Location: admin_Event Management.php");
-        exit();
-        
-    } catch (Exception $e) {
-        $conn->rollback();
-        $_SESSION['error_message'] = "Error deleting event: " . $conn->error;
-        header("Location: admin_Event Management.php");
-        exit();
+    // First, delete all questions related to this questionnaire
+    $delete_questions = $conn->prepare("DELETE FROM questions WHERE questionnaire_id = ?");
+    $delete_questions->bind_param("i", $delete_id);
+    $delete_questions->execute();
+    $delete_questions->close();
+    
+    // Then delete the questionnaire
+    $delete_questionnaire = $conn->prepare("DELETE FROM questionnaires WHERE id = ?");
+    $delete_questionnaire->bind_param("i", $delete_id);
+    
+    if ($delete_questionnaire->execute()) {
+        $_SESSION['success_message'] = "Questionnaire deleted successfully!";
+    } else {
+        $_SESSION['error_message'] = "Error deleting questionnaire: " . $conn->error;
     }
+    
+    $delete_questionnaire->close();
+    
+    // Redirect back to the same page to prevent refresh issues
+    header("Location: admin_questionnaires.php");
+    exit();
 }
 
-$sql = "SELECT id, event_name, event_date, event_time, venue FROM events WHERE status='Approved'";
-$result = $conn->query($sql);
-
-if (!$result) {
-    die("Query failed: " . $conn->error);
-}
-
-include 'sidebar.php';
+// Handle search
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 ?>
 
 <!DOCTYPE html>
@@ -63,7 +49,7 @@ include 'sidebar.php';
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
-    <title>Event Management</title>
+    <title>Questionnaires</title>
     <style>
         :root {
             --primary-color: #6366f1;
@@ -80,13 +66,6 @@ include 'sidebar.php';
             margin: 0;
         }
 
-        /* Main Content */
-        .content {
-            margin-left: 270px;
-            padding: 20px;
-            width: calc(100% - 270px);
-            min-height: 100vh;
-        }
 
         .sidebar {
             width: 260px;
@@ -121,6 +100,14 @@ include 'sidebar.php';
         .sidebar a.active {
             background: rgba(255, 255, 255, 0.2);
             border-left: 5px solid #fff;
+        }
+
+        /* Main Content */
+        .content {
+            margin-left: 270px;
+            padding: 20px;
+            width: calc(100% - 270px);
+            min-height: 100vh;
         }
 
         /* Navbar */
@@ -168,8 +155,6 @@ include 'sidebar.php';
         }
         .table {
             margin-bottom: 0;
-            border-collapse: separate;
-            border-spacing: 0;
         }
         .table thead th {
             background-color: var(--primary-color);
@@ -183,9 +168,6 @@ include 'sidebar.php';
             vertical-align: middle;
             border-color: #f1f5f9;
         }
-        .table tbody tr:hover {
-            background-color: rgba(99, 102, 241, 0.05);
-        }
 
         /* Button Styling */
         .btn {
@@ -198,34 +180,48 @@ include 'sidebar.php';
             padding: 6px 10px;
         }
 
-        /* Search Bar */
         .search-container {
-            position: relative;
-            width: 100%;
-            max-width: 350px;
-        }
-        .search-input {
-            border-radius: 6px;
-            padding: 8px 15px;
-            padding-right: 40px;
-            width: 100%;
-        }
-        .search-btn {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #64748b;
-            z-index: 2;
-            padding: 0;
-            height: 20px;
-            width: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+    position: relative;
+    width: 100%;
+    max-width: 350px;
+}
+.search-input {
+    border-radius: 6px;
+    padding: 8px 15px;
+    padding-right: 40px;
+    width: 100%;
+}
+.search-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #64748b;
+    z-index: 2;
+    padding: 0;
+    height: 20px;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.clear-search {
+    position: absolute;
+    right: 35px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #64748b;
+    cursor: pointer;
+    display: <?php echo !empty($search) ? 'block' : 'none'; ?>;
+    z-index: 2;
+    height: 20px;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
         /* Alert Styling */
         .alert {
@@ -234,26 +230,25 @@ include 'sidebar.php';
             margin-bottom: 20px;
         }
 
-        /* Button Group Styling */
-        .btn-group-custom {
-            display: flex;
-            gap: 10px;
+        /* Badge Styling */
+        .question-count {
+            background-color: #e0e7ff;
+            color: var(--primary-color);
+            padding: 3px 8px;
+            border-radius: 50px;
+            font-size: 0.8rem;
         }
 
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .page-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 15px;
-            }
-            .btn-group-custom {
-                width: 100%;
-                flex-wrap: wrap;
-            }
-            .btn-group-custom .btn {
-                flex: 1 1 auto;
-            }
+        /* Spacing adjustments */
+        .mb-4 {
+            margin-bottom: 1.25rem !important;
+        }
+        .py-4 {
+            padding-top: 1.25rem !important;
+            padding-bottom: 1.25rem !important;
+        }
+        .mt-2 {
+            margin-top: 0.5rem !important;
         }
     </style>
 </head>
@@ -263,7 +258,7 @@ include 'sidebar.php';
     <div class="content">
         <nav class="navbar navbar-light">
             <div class="container-fluid d-flex justify-content-between">
-                <span class="navbar-brand mb-0 h1">Event Management</span>
+                <span class="navbar-brand mb-0 h1">Questionnaires</span>
                 <div class="dropdown">
                     <button class="btn btn-light dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown">
                     <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
@@ -298,22 +293,22 @@ include 'sidebar.php';
 
         <div class="content-card">
             <div class="page-header">
-                <h2 class="page-title">Event Management</h2>
-                <div class="btn-group-custom">
-                    <button class="btn btn-success">Months</button>
-                    <button class="btn btn-success">All Events</button>
-                    <button class="btn btn-warning" onclick="location.href='admin_pending_events.php'">Pending Events</button>
-                    <button class="btn btn-primary" onclick="location.href='admin_event form.php'">
-                        <i class="bi bi-plus-lg"></i> Add Event
-                    </button>
-                </div>
+                <h2 class="page-title">Questionnaire Management</h2>
+                <button class="btn btn-primary" onclick="location.href='add_questionnaire.php'">
+                    <i class="bi bi-plus-lg"></i> Add Questionnaire
+                </button>
             </div>
 
             <div class="mb-4">
                 <form method="get" action="" class="d-flex align-items-center">
                     <div class="search-container">
                         <input type="text" name="search" class="form-control search-input" 
-                               placeholder="Search events...">
+                               placeholder="Search questionnaires..." value="<?php echo htmlspecialchars($search); ?>">
+                        <?php if (!empty($search)): ?>
+                            <span class="clear-search" onclick="location.href='?'">
+                                <i class="bi bi-x"></i>
+                            </span>
+                        <?php endif; ?>
                         <button type="submit" class="search-btn">
                             <i class="bi bi-search"></i>
                         </button>
@@ -326,32 +321,64 @@ include 'sidebar.php';
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th>Event Name</th>
-                            <th>Event Date</th>
-                            <th>Event Time</th>
-                            <th>Venue</th>
+                            <th>Questionnaire Details</th>
+                            <th>Created On</th>
+                            <th>Questions</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php
-                        if ($result->num_rows > 0) {
-                            while($row = $result->fetch_assoc()) {
+                        // Build the SQL query with search functionality
+                        $sql = "SELECT 
+                                    q.id, 
+                                    q.title, 
+                                    q.description, 
+                                    q.created_at, 
+                                    e.event_name,
+                                    COUNT(qu.id) AS question_count
+                                FROM questionnaires q
+                                LEFT JOIN events e ON q.event_id = e.id
+                                LEFT JOIN questions qu ON q.id = qu.questionnaire_id";
+                        
+                        // Add search condition if search term exists
+                        if (!empty($search)) {
+                            $search_term = "%$search%";
+                            $sql .= " WHERE q.title LIKE ? OR q.description LIKE ? OR e.event_name LIKE ?";
+                        }
+                        
+                        $sql .= " GROUP BY q.id ORDER BY q.created_at DESC";
+                        
+                        // Prepare and execute the query
+                        $stmt = $conn->prepare($sql);
+                        
+                        if (!empty($search)) {
+                            $stmt->bind_param("sss", $search_term, $search_term, $search_term);
+                        }
+                        
+                        $stmt->execute();
+                        $result = $stmt->get_result();
+                        
+                        if ($result && $result->num_rows > 0) {
+                            $counter = 1;
+                            while ($row = $result->fetch_assoc()) {
                                 echo "<tr>";
-                                echo "<td>" . htmlspecialchars($row['id']) . "</td>";
-                                echo "<td>" . htmlspecialchars($row['event_name']) . "</td>";
-                                echo "<td>" . htmlspecialchars($row['event_date']) . "</td>";
-                                echo "<td>" . htmlspecialchars($row['event_time']) . "</td>";
-                                echo "<td>" . htmlspecialchars($row['venue']) . "</td>";
+                                echo "<td>" . $counter++ . "</td>";
+                                echo "<td>
+                                        <strong>" . htmlspecialchars($row['title']) . "</strong><br>
+                                        <small class='text-muted'>" . htmlspecialchars($row['event_name']) . "</small>
+                                      </td>";
+                                echo "<td>" . date('M d, Y', strtotime($row['created_at'])) . "</td>";
+                                echo "<td><span class='question-count'>" . $row['question_count'] . " questions</span></td>";
                                 echo "<td>
                                         <div class='d-flex gap-2'>
-                                            <a href='admin_view_events.php?id=" . $row['id'] . "' class='btn btn-info btn-sm text-white' title='View'>
+                                            <a href='view_questionnaire.php?id=" . $row['id'] . "' class='btn btn-info btn-sm text-white' title='View'>
                                                 <i class='bi bi-eye'></i>
                                             </a>
-                                            <a href='admin_edit_events.php?id=" . $row['id'] . "' class='btn btn-warning btn-sm text-white' title='Edit'>
+                                            <a href='edit_questionnaire.php?id=" . $row['id'] . "' class='btn btn-warning btn-sm text-white' title='Edit'>
                                                 <i class='bi bi-pencil'></i>
                                             </a>
-                                            <a href='?delete_id=" . $row['id'] . "' class='btn btn-danger btn-sm text-white' title='Delete' onclick='return confirm(\"Are you sure you want to delete this event?\")'>
+                                            <a href='?delete_id=" . $row['id'] . "' class='btn btn-danger btn-sm text-white' title='Delete' onclick='return confirm(\"Are you sure you want to delete this questionnaire? All related questions will also be deleted.\")'>
                                                 <i class='bi bi-trash'></i>
                                             </a>
                                         </div>
@@ -359,10 +386,15 @@ include 'sidebar.php';
                                 echo "</tr>";
                             }
                         } else {
-                            echo "<tr><td colspan='6' class='text-center py-4'>
+                            echo "<tr><td colspan='5' class='text-center py-4'>
                                     <i class='bi bi-inbox' style='font-size: 2rem; color: #94a3b8;'></i>
-                                    <p class='mt-2'>No events available</p>
+                                    <p class='mt-2'>No questionnaires found" . (!empty($search) ? " matching your search criteria" : "") . "</p>
                                   </td></tr>";
+                        }
+                        
+                        // Close statement
+                        if (isset($stmt)) {
+                            $stmt->close();
                         }
                         ?>
                     </tbody>
@@ -370,5 +402,17 @@ include 'sidebar.php';
             </div>
         </div>
     </div>
+
+    <script>
+        // Show/hide clear search button based on input
+        document.querySelector('input[name="search"]').addEventListener('input', function() {
+            const clearBtn = document.querySelector('.clear-search');
+            if (this.value.trim() !== '') {
+                clearBtn.style.display = 'block';
+            } else {
+                clearBtn.style.display = 'none';
+            }
+        });
+    </script>
 </body>
 </html>

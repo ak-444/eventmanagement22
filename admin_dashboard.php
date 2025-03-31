@@ -6,6 +6,39 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
     header("Location: login.php");
     exit();
 }
+
+// Database connection
+$conn = new mysqli($host, $user, $password, $database);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+// Get counts
+$counts = [
+    'total' => 0,
+    'upcoming' => 0,
+    'cancelled' => 0
+];
+
+// Total Events (excluding rejected)
+$result = $conn->query("SELECT COUNT(*) as total FROM events WHERE status != 'Rejected'");
+if ($result) $counts['total'] = $result->fetch_assoc()['total'];
+
+// Upcoming Events (this week and not rejected)
+$weekStart = date('Y-m-d', strtotime('monday this week'));
+$weekEnd = date('Y-m-d', strtotime('sunday this week'));
+$result = $conn->query("SELECT COUNT(*) as upcoming FROM events 
+                      WHERE event_date BETWEEN '$weekStart' AND '$weekEnd' 
+                      AND status != 'Rejected'");
+if ($result) $counts['upcoming'] = $result->fetch_assoc()['upcoming'];
+
+// Cancelled Events (only rejected)
+$result = $conn->query("SELECT COUNT(*) as cancelled FROM events 
+                      WHERE status = 'Rejected'");
+if ($result) $counts['cancelled'] = $result->fetch_assoc()['cancelled'];
+
+$conn->close();
+include 'sidebar.php';
 ?>
 
 <!DOCTYPE html>
@@ -15,6 +48,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/countup.js/2.0.8/countUp.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
     <title>Dashboard</title>
     <style>
@@ -70,6 +104,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
             border-bottom: 2px solid #e0e0e0;
             padding: 15px;
             box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
         }
         .navbar .dropdown-menu {
             min-width: 200px;
@@ -82,15 +117,30 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
             box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
             cursor: pointer;
+            min-height: 150px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        
         }
         .dashboard-card:hover {
             transform: translateY(-5px);
+            
             box-shadow: 0px 6px 15px rgba(0, 0, 0, 0.2);
         }
         .dashboard-card h5 {
             font-weight: bold;
+        } 
+        
+        .count-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            transition: all 0.3s ease;
         }
 
+
+    
         /* Table */
         .table thead th {
             background: #293CB7;
@@ -110,14 +160,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
 </head>
 <body>
     <!-- Sidebar -->
-    <div class="sidebar">
-        <h4>AU JAS</h4>
-        <a href="admin_dashboard.php" class="active" ><i class="bi bi-house-door"></i> Dashboard</a>
-        <a href="admin_Event Calendar.php" ><i class="bi bi-calendar"></i> Event Calendar</a>
-        <a href="admin_Event Management.php" ><i class="bi bi-gear"></i> Event Management</a>
-        <a href="admin_user management.php"><i class="bi bi-people"></i> User Management</a>
-        <a href="#" ><i class="bi bi-file-earmark-text"></i> Reports</a>
-    </div>
+    <?php include 'sidebar.php'; ?>
 
     <div class="content">
         <!-- Navbar -->
@@ -128,7 +171,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
                 <!-- User Dropdown -->
                 <div class="dropdown">
                     <button class="btn btn-light dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                        <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
+                    <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                         <li><a class="dropdown-item" href="#">User Type: <?php echo htmlspecialchars($_SESSION['user_type']); ?></a></li>
@@ -153,19 +196,19 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
                     <div class="col-md-4">
                         <div class="dashboard-card bg-primary text-white">
                             <h5>Total Events</h5>
-                            <p>Click to View</p>
+                            <div class="count-number" data-count="<?= $counts['total'] ?>">0</div>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="dashboard-card bg-success text-white">
                             <h5>Upcoming Events</h5>
-                            <p>Click to View</p>
+                            <div class="count-number" data-count="<?= $counts['upcoming'] ?>">0</div>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="dashboard-card bg-danger text-white">
                             <h5>Cancelled Bookings</h5>
-                            <p>Click to View</p>
+                            <div class="count-number" data-count="<?= $counts['cancelled'] ?>">0</div>
                         </div>
                     </div>
                 </div>
@@ -208,6 +251,42 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] != 'admin') {
         function changeHeader(title) {
             document.getElementById('headerTitle').textContent = title;
         }
+        document.addEventListener('DOMContentLoaded', function() {
+            const animateCounters = () => {
+                const counters = document.querySelectorAll('.count-number');
+                
+                counters.forEach(counter => {
+                    const updateCount = () => {
+                        const target = +counter.getAttribute('data-count');
+                        const count = +counter.innerText;
+                        const increment = target / 100;
+
+                        if (count < target) {
+                            counter.innerText = Math.ceil(count + increment);
+                            setTimeout(updateCount, 20);
+                        } else {
+                            counter.innerText = target;
+                        }
+                    };
+
+                    updateCount();
+                });
+            };
+
+            // Trigger animation when element is in view
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        animateCounters();
+                        observer.unobserve(entry.target);
+                    }
+                });
+            });
+
+            document.querySelectorAll('.dashboard-card').forEach(card => {
+                observer.observe(card);
+            });
+        });
     </script>
 </body>
 </html>
