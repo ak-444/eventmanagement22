@@ -33,7 +33,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         body {
             display: flex;
             background: #f4f4f4;
-            font-family: Arial, sans-serif;
+       
         }
 
         .content {
@@ -109,11 +109,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
         }
 
         .btn-action {
-            width: 34px;
-            height: 34px;
+            padding: 5px 10px;
+            font-size: 14px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            gap: 0.2rem; /* Add this line */
         }
 
         @media (max-width: 768px) {
@@ -125,6 +126,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     </style>
 </head>
 <body>
+    
 
 <!-- Sidebar -->
 <?php include 'sidebar.php'; ?>
@@ -132,6 +134,17 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <!-- Content -->
 <div class="content">
     <!-- Updated Navbar -->
+     <!-- Add this error display section -->
+    <?php if (isset($_SESSION['error'])): ?>
+    <div class="container mt-3">
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <?= $_SESSION['error'] ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+    <?php unset($_SESSION['error']); endif; ?>
+
+<!-- Existing navbar code -->
     <nav class="navbar navbar-light">
         <div class="container-fluid d-flex justify-content-between">
             <span class="navbar-brand mb-0 h1">Event Submissions</span>
@@ -148,6 +161,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </div>
     </nav>
 
+    
+
     <!-- Added Event Header Section -->
     <div class="event-header">
         <input type="text" class="form-control" placeholder="Search submissions..." style="max-width: 300px;">
@@ -158,6 +173,24 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </button>
         </div>
     </div>
+
+    <div class="modal fade" id="errorModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Authorization Error</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <?= $_SESSION['error'] ?? '' ?>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 
     <!-- Table Section -->
     <div class="table-responsive">
@@ -192,13 +225,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             </td>
                             <td>
                                 <div class="d-flex gap-2">
-                                    <a href="?view_id=<?= $row['id'] ?>" class="btn btn-info btn-action text-white">
-                                        <i class="bi bi-eye"></i>
+                                    <a href="staff_event_view.php?id=<?= $row['id'] ?>" class="btn btn-info btn-action text-white">
+                                        <i class="bi bi-eye"></i> View
                                     </a>
                                     <?php if ($row['status'] == 'Pending'): ?>
-                                    <a href="?edit_id=<?= $row['id'] ?>" class="btn btn-warning btn-action text-white">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
+                                 
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -212,6 +243,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </tbody>
         </table>
     </div>
+    
+
 </div>
+
 </body>
+
 </html>

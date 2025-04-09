@@ -26,41 +26,33 @@ if ($result->num_rows > 0) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Handle form submission
     $event_id = $_POST['event_id'];
     $title = $_POST['title'];
     $description = $_POST['description'];
     $questions = $_POST['questions'];
 
-    if (empty($event_id) || empty($title)) {
-        echo "<script>alert('Please fill in all required fields.'); window.history.back();</script>";
-        exit();
-    }
-
-    if (empty($questions)) {
-        echo "<script>alert('Please add at least one question.'); window.history.back();</script>";
-        exit();
-    }
-
-    // Insert questionnaire into the database
     $stmt = $conn->prepare("INSERT INTO questionnaires (event_id, title, description, created_at) VALUES (?, ?, ?, NOW())");
     $stmt->bind_param("iss", $event_id, $title, $description);
     $stmt->execute();
     $questionnaire_id = $stmt->insert_id;
     $stmt->close();
 
-    // Insert questions into the database
-    foreach ($questions as $question_text) {
-        if (!empty($question_text)) {
-            $stmt = $conn->prepare("INSERT INTO questions (questionnaire_id, question_text, question_type) VALUES (?, ?, 'likert')");
-            $stmt->bind_param("is", $questionnaire_id, $question_text);
-            $stmt->execute();
+    foreach ($questions as $question) {
+        if (!empty($question['text'])) {
+            $stmt = $conn->prepare("INSERT INTO questions (questionnaire_id, question_text, question_type) VALUES (?, ?, ?)");
+            $stmt->bind_param("iss", $questionnaire_id, $question['text'], $question['type']);
+            
+            if (!$stmt->execute()) {
+                die("Database error: " . $stmt->error);
+            }
+            
             $stmt->close();
         }
     }
 
     echo "<script>alert('Questionnaire added successfully!'); window.location.href='admin_questionnaires.php';</script>";
 }
+
 
 include 'sidebar.php';
 ?>
@@ -126,17 +118,20 @@ include 'sidebar.php';
             border-radius: 8px;
             margin-bottom: 20px;
         }
-        .main-container {
+        .main-container form {
             display: flex;
             gap: 20px;
+            width: 100%;
+            flex-wrap: wrap;
         }
         .form-container {
             background: #ffffff;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
-            flex: 1;
-            max-width: 60%;
+            flex: 2;
+            min-width: 400px;
+            max-width: 65%;
         }
         .question-list-container {
             background: #ffffff;
@@ -145,6 +140,10 @@ include 'sidebar.php';
             box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
             flex: 1;
             max-width: 35%;
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            position: sticky;
+            top: 20px;
         }
         .question-input {
             margin-bottom: 15px;
@@ -171,13 +170,43 @@ include 'sidebar.php';
             font-style: italic;
             padding: 20px;
         }
+
+        .likert-stats {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .distribution-row {
+            margin-bottom: 10px;
+        }
+
+        .distribution-row span {
+            display: inline-block;
+            width: 80px;
+        }
+
+        .progress {
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: #293CB7;
+            transition: width 0.3s ease;
+        }
+
+        .response-question .badge {
+            font-size: 0.75em;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
-    <!-- Sidebar -->
-    <?php include 'sidebar.php'; ?>
-        
-    
+<?php include 'sidebar.php'; ?>
 
     <div class="content">
         <nav class="navbar navbar-light">
@@ -197,9 +226,9 @@ include 'sidebar.php';
         </nav>
 
         <div class="main-container">
-            <!-- Form Container - Left Side -->
-            <div class="form-container">
-                <form method="POST" action="add_questionnaire.php" id="questionnaireForm">
+            <form method="POST" action="add_questionnaire.php" id="questionnaireForm" class="d-flex gap-3 w-100">
+                <!-- Left Column - Form Inputs -->
+                <div class="form-container flex-grow-1">
                     <div class="mb-3">
                         <label for="event_id" class="form-label">Select Event</label>
                         <select class="form-control" id="event_id" name="event_id" required>
@@ -217,129 +246,171 @@ include 'sidebar.php';
                         <label for="description" class="form-label">Description</label>
                         <textarea class="form-control" id="description" name="description" rows="3"></textarea>
                     </div>
-                    <!-- Likert Scale Options -->
-                    <div class="mb-3">
-                        <label class="form-label">Options</label>
-                        <div>
-                            <input type="text" class="form-control" name="likert_options[]" value="Strongly Agree" readonly>
-                            <input type="text" class="form-control" name="likert_options[]" value="Agree" readonly>
-                            <input type="text" class="form-control" name="likert_options[]" value="Neutral" readonly>
-                            <input type="text" class="form-control" name="likert_options[]" value="Disagree" readonly>
-                            <input type="text" class="form-control" name="likert_options[]" value="Strongly Disagree" readonly>
-                        </div>
-                    </div>
                     <div id="questions-container">
                         <div class="question-input">
-                            <label for="question1" class="form-label">Question</label>
+                            <label class="form-label">Add Question</label>
                             <div class="input-group mb-3">
-                            <input type="text" class="form-control" id="question1" name="temp_question">
-                                <button class="btn btn-outline-success" type="button" onclick="addQuestionToList()">Add</button>
+                                <input type="text" class="form-control" id="questionText" placeholder="Enter question">
+                                <select class="form-select" id="questionType" style="max-width: 200px;">
+                                    <option value="text">Open-ended</option>
+                                    <option value="likert">Likert Scale (1-5)</option>
+                                </select>
+                                <button class="btn btn-outline-success" type="button" onclick="addQuestionToList()">
+                                    <i class="bi bi-plus-lg"></i> Add
+                                </button>
                             </div>
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">Save Questionnaire</button>
-                </form>
-            </div>
-
-            <!-- Question List Container - Right Side -->
-            <div class="question-list-container">
-                <h5>Question List</h5>
-                <div id="question-list">
-                    <div class="no-questions">No questions added yet</div>
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-save"></i> Save Questionnaire
+                    </button>
                 </div>
-            </div>
+
+                
+
+                <!-- Right Column - Question List -->
+                <div class="question-list-container">
+                    <h5>Question List</h5>
+                    <div id="question-list">
+                        <div class="no-questions">No questions added yet</div>
+                    </div>
+                    
+                </div>
+
+                
+            </form>
         </div>
     </div>
 
     <script>
-        let questionCount = 0;
-        const questions = [];
+
+function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+
+       let questionCount = 0;
+        let questions = [];
+        let editingQuestionId = null;
 
         function addQuestionToList() {
-            const questionInput = document.getElementById('question1');
-            const questionText = questionInput.value.trim();
-            
-            if (questionText === '') {
-                alert('Please enter a question');
-                return;
-            }
-            
-            // Clear any previous error messages
-            const errorMessages = document.getElementsByClassName('error-message');
-            while(errorMessages.length > 0) {
-                errorMessages[0].parentNode.removeChild(errorMessages[0]);
-            }
-            
-            // Rest of your existing code...
-            questionCount++;
-            questions.push({
-                id: questionCount,
-                text: questionText
-            });
-            
-            updateQuestionList();
-            questionInput.value = '';
-            questionInput.focus();
+        const questionText = document.getElementById('questionText').value.trim();
+        const questionType = document.getElementById('questionType').value;
+
+        if (!questionText) {
+            alert('Please enter a question');
+            return;
         }
 
-        function updateQuestionList() {
-            const questionList = document.getElementById('question-list');
-            
-            if (questions.length === 0) {
-                questionList.innerHTML = '<div class="no-questions">No questions added yet</div>';
-                return;
-            }
-            
-            let html = '';
-            questions.forEach((question, index) => {
-                html += `
-                    <div class="question-item" data-id="${question.id}">
-                        <div class="question-text">${index + 1}. ${escapeHtml(question.text)}</div>
-                        <div class="question-actions">
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="editQuestion(${question.id})">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteQuestion(${question.id})">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </div>
-                        <input type="hidden" name="questions[]" value="${escapeHtml(question.text)}" form="questionnaireForm">
-                    </div>
-                `;
-            });
-            
-            questionList.innerHTML = html;
-        }
+        questions.push({
+            id: Date.now(),
+            text: questionText,
+            type: questionType
+        });
 
-        function editQuestion(id) {
-            const question = questions.find(q => q.id === id);
-            if (!question) return;
-            
-            const newText = prompt('Edit question:', question.text);
-            if (newText !== null && newText.trim() !== '') {
-                question.text = newText.trim();
-                updateQuestionList();
-            }
-        }
+        updateQuestionList();
+        document.getElementById('questionText').value = '';
+    }
 
-        function deleteQuestion(id) {
-            if (confirm('Are you sure you want to delete this question?')) {
-                const index = questions.findIndex(q => q.id === id);
-                if (index !== -1) {
-                    questions.splice(index, 1);
-                    updateQuestionList();
-                }
-            }
-        }
+    function updateQuestionList() {
+    const list = document.getElementById('question-list');
+    list.innerHTML = questions.length > 0 ? '' : '<div class="no-questions">No questions added yet</div>';
 
-        function escapeHtml(unsafe) {
-            return unsafe
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-        }
+    questions.forEach((q, index) => {
+        const questionEl = document.createElement('div');
+        questionEl.className = 'question-item';
+        questionEl.innerHTML = `
+            <div class="question-text">
+                ${index + 1}. ${escapeHtml(q.text)}
+                <span class="badge bg-secondary">${q.type}</span>
+            </div>
+            <div class="question-actions">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="editQuestion(${q.id})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteQuestion(${q.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+            <input type="hidden" name="questions[${index}][text]" value="${escapeHtml(q.text)}">
+            <input type="hidden" name="questions[${index}][type]" value="${q.type}">
+        `;
+        list.appendChild(questionEl);
+    });
+}
+
+function editQuestion(id) {
+    const question = questions.find(q => q.id === id);
+    if (!question) return;
+
+    // Populate modal fields
+    document.getElementById('editQuestionText').value = question.text;
+    document.getElementById('editQuestionType').value = question.type;
+    editingQuestionId = id;
+    
+    // Show the modal
+    const editModal = new bootstrap.Modal(document.getElementById('editQuestionModal'));
+    editModal.show();
+}
+
+function saveEditedQuestion() {
+    const newText = document.getElementById('editQuestionText').value.trim();
+    const newType = document.getElementById('editQuestionType').value;
+
+    if (!newText) {
+        alert('Question text cannot be empty');
+        return;
+    }
+
+    const questionIndex = questions.findIndex(q => q.id === editingQuestionId);
+    if (questionIndex > -1) {
+        questions[questionIndex].text = newText;
+        questions[questionIndex].type = newType;
+        updateQuestionList();
+    }
+    
+    // Hide the modal
+    bootstrap.Modal.getInstance(document.getElementById('editQuestionModal')).hide();
+    editingQuestionId = null;
+}
+
+function deleteQuestion(id) {
+    questions = questions.filter(q => q.id !== id);
+    updateQuestionList();
+}
     </script>
+
+<div class="modal fade" id="editQuestionModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Question</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="editQuestionText" class="form-label">Question Text</label>
+          <input type="text" class="form-control" id="editQuestionText" required>
+        </div>
+        <div class="mb-3">
+          <label for="editQuestionType" class="form-label">Question Type</label>
+          <select class="form-select" id="editQuestionType">
+            <option value="text">Open-ended</option>
+            <option value="likert">Likert Scale (1-5)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveEditedQuestion()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>

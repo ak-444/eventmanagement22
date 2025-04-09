@@ -152,13 +152,50 @@ include 'sidebar.php';
             letter-spacing: 0.5px;
             color: #1E2A78;
         }
+
+        .search-bar-container {
+            width: 300px;
+            margin-right: 15px;
+        }
+
+        .search-bar-container .form-control {
+            border-radius: 6px;
+            padding: 8px 15px;
+            border: 1px solid #dee2e6;
+            transition: all 0.3s ease;
+        }
+
+        .search-bar-container .form-control:focus {
+            border-color: #293CB7;
+            box-shadow: 0 0 0 3px rgba(41, 60, 183, 0.1);
+        }
+        .search-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #64748b;
+            z-index: 2;
+            padding: 0;
+            height: 20px;
+            width: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
     </style>
 </head>
 <body>
     <!-- Sidebar -->
     <?php include 'sidebar.php'; ?>
-
-    
 
     <!-- Main Content -->
     <div class="content">
@@ -168,7 +205,7 @@ include 'sidebar.php';
                 <span class="navbar-brand mb-0 h1">Event Calendar</span>
                 <div class="dropdown">
                     <button class="btn btn-light dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown">
-                        <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
+                    <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                         <li><a class="dropdown-item" href="#">User Type: <?php echo htmlspecialchars($_SESSION['user_type']); ?></a></li>
@@ -183,19 +220,28 @@ include 'sidebar.php';
         <div class="calendar-tools">
             <div class="d-flex justify-content-between align-items-center">
                 <div class="d-flex gap-2">
-                    <input type="text" class="form-control" placeholder="Search events..." style="width: 300px">
+                <div class="search-bar-container">
+                    <input type="text" class="form-control" placeholder="Search events...">
+                    <button type="submit" class="search-btn">
+                            <i class="bi bi-search"></i>
+                    </button>
+                </div>
                     <?php if($_SESSION['user_type'] == 'admin'): ?>
                     <button class="btn btn-primary" onclick="location.href='admin_event form.php'">
                         <i class="bi bi-plus-lg"></i> Add Event
                     </button>
                     <?php endif; ?>
                 </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-outline-secondary">Today</button>
-                    <div class="btn-group">
-                        <button class="btn btn-outline-secondary active">Month</button>
-                        <button class="btn btn-outline-secondary">Week</button>
-                        <button class="btn btn-outline-secondary">Day</button>
+                <div class="d-flex gap-2 align-items-center">
+                    <div class="nav-buttons">
+                        <button class="btn btn-outline-secondary" id="prevBtn"><i class="bi bi-chevron-left"></i></button>
+                        <button class="btn btn-outline-secondary" id="todayBtn">Today</button>
+                        <button class="btn btn-outline-secondary" id="nextBtn"><i class="bi bi-chevron-right"></i></button>
+                    </div>
+                    <div class="btn-group ms-2">
+                        <button class="btn btn-outline-secondary active" data-view="month">Month</button>
+                        <button class="btn btn-outline-secondary" data-view="week">Week</button>
+                        <button class="btn btn-outline-secondary" data-view="day">Day</button>
                     </div>
                 </div>
             </div>
@@ -204,8 +250,6 @@ include 'sidebar.php';
         <div class="calendar-header mb-3">
             <h3 id="monthYearText" class="text-primary fw-bold"></h3>
         </div>
-
-        
 
         <!-- Calendar Container -->
         <div id="calendar"></div>
@@ -219,6 +263,9 @@ include 'sidebar.php';
     document.addEventListener('DOMContentLoaded', () => {
         const calendarEl = document.getElementById('calendar');
         const monthYearText = document.getElementById('monthYearText');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const todayBtn = document.getElementById('todayBtn');
         
         const calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
@@ -248,7 +295,7 @@ include 'sidebar.php';
                 // Permanently highlight the day cell
                 const dayCell = document.querySelector(`.fc-day[data-date="${event.startStr}"]`);
                 if (dayCell) {
-                    dayCell.style.backgroundColor = 'rgba(255, 193, 7, 0.2)'; // Yellow highlight
+                    dayCell.style.backgroundColor = 'rgba(255, 193, 7, 0.2)';
                 }
                 
                 // Remove hover effects if needed
@@ -265,18 +312,45 @@ include 'sidebar.php';
         const year = currentDate.getFullYear();
         monthYearText.textContent = `${month} ${year}`;
         
+        // Navigation buttons
+        prevBtn.addEventListener('click', () => {
+            calendar.prev();
+        });
+        
+        nextBtn.addEventListener('click', () => {
+            calendar.next();
+        });
+        
+        todayBtn.addEventListener('click', () => {
+            calendar.today();
+        });
+        
         // View change buttons
-        document.querySelector('.btn-group').addEventListener('click', (e) => {
-            if (e.target.tagName === 'BUTTON') {
-                const viewType = e.target.textContent.toLowerCase();
-                calendar.changeView(`dayGrid${viewType.charAt(0).toUpperCase() + viewType.slice(1)}`);
+        document.querySelectorAll('.btn-group .btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const viewType = e.target.getAttribute('data-view');
+                let calendarView;
+                
+                switch(viewType) {
+                    case 'month':
+                        calendarView = 'dayGridMonth';
+                        break;
+                    case 'week':
+                        calendarView = 'dayGridWeek';
+                        break;
+                    case 'day':
+                        calendarView = 'dayGridDay';
+                        break;
+                }
+                
+                calendar.changeView(calendarView);
                 
                 // Update active state on buttons
                 document.querySelectorAll('.btn-group .btn').forEach(btn => {
                     btn.classList.remove('active');
                 });
                 e.target.classList.add('active');
-            }
+            });
         });
     });
     </script>

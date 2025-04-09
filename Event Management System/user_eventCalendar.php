@@ -12,6 +12,7 @@ if ($_SESSION['user_type'] !== 'user') {
     header("Location: " . $dashboardLink); // Redirect to the appropriate dashboard
     exit();
 }
+include 'sidebar.php';
 ?>
 
 <!DOCTYPE html>
@@ -76,18 +77,7 @@ if ($_SESSION['user_type'] !== 'user') {
     </style>
 </head>
 <body>
-<div class="sidebar">
-        <h4>AU JAS</h4>
-        <a href="user_dashboard.php" class="<?= basename($_SERVER['PHP_SELF']) == 'user_dashboard.php' ? 'active' : '' ?>">
-            <i class="bi bi-house-door"></i> Dashboard
-        </a>
-        <a href="user_eventCalendar.php" class="<?= basename($_SERVER['PHP_SELF']) == 'user_eventCalendar.php' ? 'active' : '' ?>">
-            <i class="bi bi-calendar"></i> Event Calendar
-        </a>
-        <a href="user_evaluation.php" class="<?= basename($_SERVER['PHP_SELF']) == 'user_evaluation.php' ? 'active' : '' ?>">
-            <i class="bi bi-clipboard"></i> Evaluation
-        </a>
-    </div>
+<?php include 'sidebar.php'; ?>
 
     <div class="content">
          <!-- Navbar -->

@@ -1,16 +1,9 @@
 <?php
 session_start();
 require_once 'config.php';
-$current_page = basename($_SERVER['PHP_SELF']);
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
-}
 
-// ... [existing dashboard link code] ...
-
-// Handle user form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Retrieve form data
     $name = trim($_POST['name']);
     $email = trim($_POST['email']);
     $user_type = trim($_POST['user_type']);
@@ -18,28 +11,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $school_id = trim($_POST['school_id']);
     $password = trim($_POST['password']);
     
-    if (!empty($name) && !empty($email) && !empty($user_type) && 
-        !empty($department) && !empty($school_id) && !empty($password)) {
-        
-        // Hash the password
-        $password_hash = password_hash($password, PASSWORD_BCRYPT);
-        
-        $stmt = $conn->prepare("INSERT INTO users (username, email, user_type, department, school_id, password) 
-                              VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssssss", $name, $email, $user_type, $department, $school_id, $password_hash);
+    // Set status based on admin session
+    $status = (isset($_SESSION['user_type']) && $_SESSION['user_type'] == 'admin') ? 'approved' : 'pending';
+    
+    // Hash password
+    $password_hash = password_hash($password, PASSWORD_BCRYPT);
+    
+    // Prepare SQL (include status)
+    $stmt = $conn->prepare("INSERT INTO users (username, email, user_type, department, school_id, password, status) 
+                          VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("sssssss", $name, $email, $user_type, $department, $school_id, $password_hash, $status);
 
-        if ($stmt->execute()) {
-            echo "<script>alert('User added successfully!'); window.location.href='admin_user management.php';</script>";
-        } else {
-            echo "<script>alert('Error adding user: " . $conn->error . "');</script>";
-        }
-        $stmt->close();
+    if ($stmt->execute()) {
+        $_SESSION['success'] = "User added successfully!";       
     } else {
-        echo "<script>alert('Please fill in all required fields.');</script>";
+        $_SESSION['error'] = "Error: " . $conn->error;
     }
+    $stmt->close();
+    $conn->close();
 }
+include 'sidebar.php';
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -53,9 +45,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     <style>
 
-        body {
+body {
             display: flex;
             background: #f4f4f4;
+        }
+
+        .container {
+            margin-top: 1.5rem; /* Additional spacing insurance */
+        }
+        .content {
+            margin-left: 270px;
+            padding: 20px;
+            width: calc(100% - 270px);
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-top: 1rem;
+            max-width: 100%;
+            margin: 20px 0;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
         }
         .sidebar {
             width: 260px;
@@ -85,7 +98,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             margin-right: 10px;
             font-size: 18px;
         }
-        .sidebar a:hover, .sidebar a.active {
+        .sidebar a:hover, 
+        .sidebar a.active {
             background: rgba(255, 255, 255, 0.2);
             border-left: 5px solid #fff;
         }
@@ -101,23 +115,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
             border-radius: 8px;
         }
-        .event-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-top: 10px;
-        }
-        .event-form {
-            display: none;
-            width: 350px;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-            position: absolute;
-            top: 120px;
-            left: 280px;
+
+        .form-container {
+            max-width: 1200px;
+            margin: 0 auto;
         }
     </style>
 
@@ -127,99 +128,90 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <body>
 
    <!-- Sidebar -->
-<div class="sidebar">
-    <h4>AU JAS</h4>
-    <a href="<?= $dashboardLink; ?>" class="<?= ($current_page == basename($dashboardLink)) ? 'active' : ''; ?>">
-        <i class="bi bi-house-door"></i> Dashboard
-    </a>
-    <a href="admin_Event Calendar.php" class="<?= ($current_page == 'admin_Event Calendar.php') ? 'active' : ''; ?>">
-        <i class="bi bi-calendar"></i> Event Calendar
-    </a>
-    <a href="admin_Event Management.php" class="<?= ($current_page == 'admin_Event Management.php') ? 'active' : ''; ?>">
-        <i class="bi bi-gear"></i> Event Management
-    </a>
-    <a href="admin_user management.php" class="<?= ($current_page == 'admin_user management.php' || $current_page == 'admin_user form.php') ? 'active' : ''; ?>">
-    <i class="bi bi-people"></i> User Management
-    </a>
-    <a href="reports.php" class="<?= ($current_page == 'reports.php') ? 'active' : ''; ?>">
-        <i class="bi bi-file-earmark-text"></i> Reports
-    </a>
-</div>
+   <?php include 'sidebar.php'; ?>
 
-
-    <div class="content">
-        <nav class="navbar navbar-light">
-            <div class="container-fluid d-flex justify-content-between">
-                <span class="navbar-brand mb-0 h1">User Management</span>
-                <div class="dropdown">
-                    <button class="btn btn-light dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                        <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                        <li><a class="dropdown-item" href="#">User Type: <?php echo htmlspecialchars($_SESSION['user_type']); ?></a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
-                    </ul>
-                </div>
-            </div>
-        </nav>
-
-        <div class="event-header">
-            <input type="text" class="form-control" placeholder="Search events..." style="width: 300px;">
-            <div>
-            <button class="btn btn-success">Users</button>
-                <button class="btn btn-warning">Pending Users</button>
-                <button class="btn btn-primary" onclick="location.href='admin_user form.php'">Add User</button>
-
+   <div class="content">
+    <nav class="navbar navbar-light">
+        <div class="container-fluid d-flex justify-content-between">
+            <span class="navbar-brand mb-0 h1">User Management</span>
+            <div class="dropdown">
+                <button class="btn btn-light dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <?= htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                    <li><a class="dropdown-item">User Type: <?= htmlspecialchars($_SESSION['user_type']); ?></a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
+                </ul>
             </div>
         </div>
+    </nav>
 
-        <div class="container mt-5">
-        <a href="admin_user management.php" class="btn btn-secondary mb-3">Back to User Management</a>
-        <div class="row">
-            <div class="col-md-8">
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="form-container">
                 <div class="card shadow-sm p-4">
-                    <h2 class="mb-4">Add New User</h2>
+                    <h2 class="mb-4"><i class="bi bi-person-plus"></i> Add New User</h2>
+                    
+                    <?php if (isset($_SESSION['error'])): ?>
+                    <div class="alert alert-danger"><?= $_SESSION['error'] ?></div>
+                    <?php unset($_SESSION['error']); endif; ?>
+                    
+                    <?php if (isset($_SESSION['success'])): ?>
+                    <div class="alert alert-success"><?= $_SESSION['success'] ?></div>
+                    <?php unset($_SESSION['success']); endif; ?>
+
                     <form method="POST">
-                        <div class="mb-3">
-                            <label class="form-label">Full Name</label>
-                            <input type="text" class="form-control" name="name" required>
+                        <div class="form-group">
+                            <label>Full Name</label>
+                            <input type="text" name="name" class="form-control" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Email Address</label>
-                            <input type="email" class="form-control" name="email" required>
+
+                        <div class="form-group">
+                            <label>Email Address</label>
+                            <input type="email" name="email" class="form-control" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Password</label>
-                            <input type="password" class="form-control" name="password" required>
+
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" name="password" class="form-control" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">User Type</label>
-                            <select class="form-select" name="user_type" required>
+
+                        <div class="form-group">
+                            <label>User Type</label>
+                            <select name="user_type" class="form-select" required>
                                 <option value="user">User</option>
                                 <option value="staff">Staff</option>
                                 <option value="admin">Admin</option>
                             </select>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Department</label>
-                            <select class="form-select" name="department" required>
+
+                        <div class="form-group">
+                            <label>Department</label>
+                            <select name="department" class="form-select" required>
                                 <option value="Information Technology">Information Technology</option>
                                 <option value="Accounting">Accounting</option>
                                 <option value="Business">Business</option>
                             </select>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">School ID</label>
-                            <input type="text" class="form-control" name="school_id" required>
+
+                        <div class="form-group">
+                            <label>School ID</label>
+                            <input type="text" name="school_id" class="form-control" required>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100">Add User</button>
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="admin_user management.php" class="btn btn-secondary px-4">Cancel</a>
+                            <button type="submit" class="btn btn-primary px-4">
+                                Add User
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
         </div>
     </div>
-
+</div>
 
 
 </body>
