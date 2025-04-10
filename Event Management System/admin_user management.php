@@ -170,7 +170,7 @@ include 'sidebar.php';
             padding: 6px 10px;
         }
 
-        /* Search Bar */
+        /* Search Bar - Updated Styling */
         .search-container {
             position: relative;
             width: 100%;
@@ -179,10 +179,26 @@ include 'sidebar.php';
         .search-input {
             border-radius: 6px;
             padding: 8px 15px;
-            padding-right: 40px;
+            padding-right: 70px; /* Increased for both search icon and clear button */
             width: 100%;
         }
         .search-btn {
+            position: absolute;
+            right: 40px; /* Moved to make room for clear button */
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #64748b;
+            z-index: 2;
+            padding: 0;
+            height: 20px;
+            width: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .clear-search {
             position: absolute;
             right: 10px;
             top: 50%;
@@ -197,23 +213,10 @@ include 'sidebar.php';
             display: flex;
             align-items: center;
             justify-content: center;
-        }
-        .clear-btn {
-            position: absolute;
-            right: 35px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #64748b;
-            z-index: 2;
-            padding: 0;
-            height: 20px;
-            width: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             cursor: pointer;
+        }
+        .clear-search:hover {
+            color: #ef4444;
         }
 
         /* Alert Styling */
@@ -299,13 +302,11 @@ include 'sidebar.php';
                     <div class="search-container">
                         <input type="text" name="search" class="form-control search-input" 
                                placeholder="Search users..." value="<?php echo isset($_GET['search']) ? htmlspecialchars($_GET['search']) : ''; ?>">
-                        <?php if (isset($_GET['search']) && !empty($_GET['search'])): ?>
-                            <button type="button" class="clear-btn" onclick="clearSearch()">
-                                <i class="bi bi-x"></i>
-                            </button>
-                        <?php endif; ?>
                         <button type="submit" class="search-btn">
                             <i class="bi bi-search"></i>
+                        </button>
+                        <button type="button" class="clear-search" <?php echo empty($_GET['search']) ? 'style="display:none;"' : ''; ?>>
+                            <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                 </form>
@@ -368,7 +369,7 @@ include 'sidebar.php';
                         } else {
                             echo "<tr><td colspan='7' class='text-center py-4'>
                                     <i class='bi bi-inbox' style='font-size: 2rem; color: #94a3b8;'></i>
-                                    <p class='mt-2'>No users found</p>
+                                    <p class='mt-2'>No users found" . (!empty($search) ? " matching your search criteria" : "") . "</p>
                                   </td></tr>";
                         }
                         $stmt->close();
@@ -380,11 +381,47 @@ include 'sidebar.php';
     </div>
 
     <script>
-        function clearSearch() {
-            const searchInput = document.querySelector('.search-input');
-            searchInput.value = '';
-            window.location.href = window.location.pathname;
-        }
+        // Add debounced search functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.querySelector('input[name="search"]');
+            const clearButton = document.querySelector('.clear-search');
+            let searchTimer;
+            
+            if (searchInput) {
+                // Add search debounce
+                searchInput.addEventListener('input', function() {
+                    clearTimeout(searchTimer);
+                    const value = this.value;
+                    
+                    // Only submit if there's actual content and wait 500ms after typing stops
+                    if (value.trim().length > 0) {
+                        searchTimer = setTimeout(() => {
+                            this.form.submit();
+                        }, 500);
+                    }
+                });
+                
+                // Add clear button functionality
+                if (clearButton) {
+                    clearButton.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        // Redirect to page without search params
+                        window.location.href = window.location.pathname;
+                    });
+                    
+                    // Show/hide clear button based on input content
+                    if (searchInput.value.length > 0) {
+                        clearButton.style.display = 'flex';
+                    } else {
+                        clearButton.style.display = 'none';
+                    }
+                    
+                    searchInput.addEventListener('input', function() {
+                        clearButton.style.display = this.value.length > 0 ? 'flex' : 'none';
+                    });
+                }
+            }
+        });
     </script>
 </body>
 </html>

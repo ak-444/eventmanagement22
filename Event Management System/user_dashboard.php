@@ -366,7 +366,7 @@ $conn->close();
         <!-- Welcome Section -->
         <section class="welcome-section">
             <h2>Welcome to Your Dashboard</h2>
-            <p>Here you can view information about upcoming events and explore our platform.</p>
+            <p>Here you can view information about upcoming events</p>
         </section>
 
         <!-- Breaking News Ticker - Animated -->

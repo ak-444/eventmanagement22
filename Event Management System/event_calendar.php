@@ -156,6 +156,7 @@ include 'sidebar.php';
         .search-bar-container {
             width: 300px;
             margin-right: 15px;
+            position: relative;
         }
 
         .search-bar-container .form-control {
@@ -178,6 +179,7 @@ include 'sidebar.php';
             border: none;
             color: #64748b;
             z-index: 2;
+            cursor: pointer;
             padding: 0;
             height: 20px;
             width: 20px;
@@ -190,7 +192,64 @@ include 'sidebar.php';
             display: flex;
             gap: 8px;
         }
-
+        
+        /* Search Results Styling */
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: none;
+        }
+        
+        .search-results .result-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .search-results .result-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .search-results .result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .search-results .result-date {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        
+        .no-results {
+            padding: 12px;
+            color: #6c757d;
+            text-align: center;
+        }
+        
+        /* Toast Notification */
+        .search-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: #293CB7;
+            color: white;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 1050;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
     </style>
 </head>
 <body>
@@ -220,12 +279,13 @@ include 'sidebar.php';
         <div class="calendar-tools">
             <div class="d-flex justify-content-between align-items-center">
                 <div class="d-flex gap-2">
-                <div class="search-bar-container">
-                    <input type="text" class="form-control" placeholder="Search events...">
-                    <button type="submit" class="search-btn">
+                    <div class="search-bar-container">
+                        <input type="text" class="form-control" id="searchInput" placeholder="Search events...">
+                        <button type="button" class="search-btn" id="searchBtn">
                             <i class="bi bi-search"></i>
-                    </button>
-                </div>
+                        </button>
+                        <div class="search-results" id="searchResults"></div>
+                    </div>
                     <?php if($_SESSION['user_type'] == 'admin'): ?>
                     <button class="btn btn-primary" onclick="location.href='admin_event form.php'">
                         <i class="bi bi-plus-lg"></i> Add Event
@@ -253,6 +313,11 @@ include 'sidebar.php';
 
         <!-- Calendar Container -->
         <div id="calendar"></div>
+        
+        <!-- Toast Notification -->
+        <div class="search-toast" id="searchToast">
+            <span id="toastMessage"></span>
+        </div>
     </div>
 
     <!-- Scripts -->
@@ -266,6 +331,14 @@ include 'sidebar.php';
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
         const todayBtn = document.getElementById('todayBtn');
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const searchResults = document.getElementById('searchResults');
+        const searchToast = document.getElementById('searchToast');
+        const toastMessage = document.getElementById('toastMessage');
+        
+        // Event data
+        const events = <?= json_encode($events) ?>;
         
         const calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
@@ -274,7 +347,7 @@ include 'sidebar.php';
                 center: '',
                 right: ''
             },
-            events: <?= json_encode($events) ?>,
+            events: events,
             datesSet: function(info) {
                 // Update month/year display
                 const start = info.view.currentStart;
@@ -351,6 +424,121 @@ include 'sidebar.php';
                 });
                 e.target.classList.add('active');
             });
+        });
+
+        // =========== Search Functionality ===========
+        
+        // Function to show toast notification
+        function showToast(message, duration = 3000) {
+            toastMessage.textContent = message;
+            searchToast.style.display = 'block';
+            
+            // Trigger reflow to enable CSS transition
+            searchToast.offsetHeight;
+            
+            searchToast.style.opacity = '1';
+            
+            setTimeout(() => {
+                searchToast.style.opacity = '0';
+                setTimeout(() => {
+                    searchToast.style.display = 'none';
+                }, 300);
+            }, duration);
+        }
+        
+        // Format date in a readable format
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('default', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+        }
+        
+        // Search function
+        function searchEvents(query) {
+            query = query.toLowerCase().trim();
+            
+            if (!query) {
+                searchResults.style.display = 'none';
+                return;
+            }
+            
+            const matchingEvents = events.filter(event => 
+                event.title.toLowerCase().includes(query) ||
+                (event.description && event.description.toLowerCase().includes(query)) ||
+                (event.venue && event.venue.toLowerCase().includes(query))
+            );
+            
+            // Display results
+            searchResults.innerHTML = '';
+            
+            if (matchingEvents.length === 0) {
+                searchResults.innerHTML = '<div class="no-results">No events found</div>';
+            } else {
+                matchingEvents.forEach(event => {
+                    const resultItem = document.createElement('div');
+                    resultItem.className = 'result-item';
+                    resultItem.innerHTML = `
+                        <div>${event.title}</div>
+                        <div class="result-date">${formatDate(event.start)}</div>
+                    `;
+                    
+                    // Add click event to navigate to this event's date
+                    resultItem.addEventListener('click', () => {
+                        // Navigate to the date of this event
+                        calendar.gotoDate(event.start);
+                        
+                        // If in day or week view, switch to month view to ensure visibility
+                        if (calendar.view.type !== 'dayGridMonth') {
+                            calendar.changeView('dayGridMonth');
+                            
+                            // Update button active state
+                            document.querySelectorAll('.btn-group .btn').forEach(btn => {
+                                btn.classList.remove('active');
+                            });
+                            document.querySelector('[data-view="month"]').classList.add('active');
+                        }
+                        
+                        // Clear search and hide results
+                        searchInput.value = '';
+                        searchResults.style.display = 'none';
+                        
+                        // Show confirmation toast
+                        showToast(`Navigated to "${event.title}" on ${formatDate(event.start)}`);
+                    });
+                    
+                    searchResults.appendChild(resultItem);
+                });
+            }
+            
+            searchResults.style.display = 'block';
+        }
+        
+        // Search button click event
+        searchBtn.addEventListener('click', () => {
+            searchEvents(searchInput.value);
+        });
+        
+        // Search input keyup event (for real-time search)
+        searchInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') {
+                searchEvents(searchInput.value);
+            } else if (searchInput.value.length >= 2) {
+                searchEvents(searchInput.value);
+            } else {
+                searchResults.style.display = 'none';
+            }
+        });
+        
+        // Hide search results when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && 
+                !searchBtn.contains(e.target) && 
+                !searchResults.contains(e.target)) {
+                searchResults.style.display = 'none';
+            }
         });
     });
     </script>
