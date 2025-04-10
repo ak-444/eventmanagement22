@@ -1,3 +1,4 @@
+<!--User  Management--->
 <?php
 session_start();
 require_once 'config.php';
@@ -53,12 +54,9 @@ include 'sidebar.php';
         body {
             display: flex;
             background: #f8fafc;
-            
             margin: 0;
         }
 
-
-        
         .sidebar {
             width: 260px;
             height: 100vh;
@@ -93,7 +91,6 @@ include 'sidebar.php';
             background: rgba(255, 255, 255, 0.2);
             border-left: 5px solid #fff;
         }
-
 
         /* Main Content */
         .content {
@@ -201,6 +198,23 @@ include 'sidebar.php';
             align-items: center;
             justify-content: center;
         }
+        .clear-btn {
+            position: absolute;
+            right: 35px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #64748b;
+            z-index: 2;
+            padding: 0;
+            height: 20px;
+            width: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
 
         /* Alert Styling */
         .alert {
@@ -284,7 +298,12 @@ include 'sidebar.php';
                 <form method="get" action="" class="d-flex align-items-center">
                     <div class="search-container">
                         <input type="text" name="search" class="form-control search-input" 
-                               placeholder="Search users...">
+                               placeholder="Search users..." value="<?php echo isset($_GET['search']) ? htmlspecialchars($_GET['search']) : ''; ?>">
+                        <?php if (isset($_GET['search']) && !empty($_GET['search'])): ?>
+                            <button type="button" class="clear-btn" onclick="clearSearch()">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        <?php endif; ?>
                         <button type="submit" class="search-btn">
                             <i class="bi bi-search"></i>
                         </button>
@@ -307,8 +326,22 @@ include 'sidebar.php';
                     </thead>
                     <tbody>
                         <?php
+                        $search = isset($_GET['search']) ? trim($_GET['search']) : '';
                         $user_query = "SELECT id, username, email, user_type, department, school_id FROM users WHERE status != 'pending'";
-                        $user_result = $conn->query($user_query);
+                        
+                        if (!empty($search)) {
+                            $search_term = "%$search%";
+                            $user_query .= " AND (username LIKE ? OR email LIKE ? OR user_type LIKE ? OR department LIKE ? OR school_id LIKE ?)";
+                        }
+                        
+                        $stmt = $conn->prepare($user_query);
+                        
+                        if (!empty($search)) {
+                            $stmt->bind_param("sssss", $search_term, $search_term, $search_term, $search_term, $search_term);
+                        }
+                        
+                        $stmt->execute();
+                        $user_result = $stmt->get_result();
 
                         if ($user_result->num_rows > 0) {
                             $counter = 1;
@@ -338,11 +371,20 @@ include 'sidebar.php';
                                     <p class='mt-2'>No users found</p>
                                   </td></tr>";
                         }
+                        $stmt->close();
                         ?>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
+
+    <script>
+        function clearSearch() {
+            const searchInput = document.querySelector('.search-input');
+            searchInput.value = '';
+            window.location.href = window.location.pathname;
+        }
+    </script>
 </body>
 </html>

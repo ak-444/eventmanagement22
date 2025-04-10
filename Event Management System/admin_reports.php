@@ -637,7 +637,8 @@ if ($selected_event_id > 0) {
                 </div>
                 
                 <?php if (!empty($questionnaires)): ?>
-                    <div class="event-summary">
+            <!-- Summary cards and questionnaires table -->
+            <div class="event-summary">
                         <?php
                             $total_questions = 0;
                             foreach ($questionnaires as $q) {
@@ -673,10 +674,11 @@ if ($selected_event_id > 0) {
                             <h5>Total Participants</h5>
                             <p><?= $eval_count['total_users'] ?? 0 ?></p>
                         </div>
-                    </div>
+                </div>
                     
                     <?php if (!empty($questions)) : ?>
-                        <div class="card mt-4">
+                <!-- Questions and responses section -->
+                <div class="card mt-4">
                             <div class="card-header">
                                 <h5 class="card-title"><i class="bi bi-chat-dots"></i> Evaluation Responses</h5>
                             </div>
@@ -711,7 +713,7 @@ if ($selected_event_id > 0) {
                                             }
                                             $total_responses = count($likert_values);
                                             
-                                            // Define labels for Likert scale
+                                            // Define Likert scale labels
                                             $likert_labels = [
                                                 1 => 'Strongly Disagree',
                                                 2 => 'Disagree',
@@ -775,84 +777,73 @@ if ($selected_event_id > 0) {
                                 <?php endforeach; ?>
                             </div>
                         </div>
-                    <?php else : ?>
-                        <div class="alert alert-warning">No questions found for this event.</div>
-                    <?php endif; ?>
-
-                    <!-- Completed Evaluations Section -->
-                    <?php
-                    $total_questions = count($questions);
-                    if ($total_questions > 0) {
-                        // Fetch and display users who completed all questions
-                        $user_sql = "SELECT u.id, u.username, COUNT(a.id) as answered 
-                                    FROM users u
-                                    JOIN answers a ON u.id = a.user_id
-                                    WHERE a.question_id IN (
-                                        SELECT q.id FROM questions q
-                                        JOIN questionnaires qn ON q.questionnaire_id = qn.id
-                                        WHERE qn.event_id = ?
-                                    )
-                                    GROUP BY u.id
-                                    HAVING answered = ?";
-                        
-                        $stmt = $conn->prepare($user_sql);
-                        $stmt->bind_param("ii", $selected_event_id, $total_questions);
-                        $stmt->execute();
-                        $users_result = $stmt->get_result();
-                        
-                        if ($users_result->num_rows > 0) {
-                            echo '<div class="card mt-4">';
-                            echo '<div class="card-header">';
-                            echo '<h5 class="card-title"><i class="bi bi-check-circle"></i> Completed Evaluations</h5>';
-                            echo '</div>';
-                            echo '<div class="card-body">';
-                            echo '<div class="table-responsive">';
-                            echo '<table class="table table-striped">';
-                            echo '<thead>';
-                            echo '<tr><th>#</th><th>Participant</th><th>Completed At</th></tr>';
-                            echo '</thead><tbody>';
-                            
-                            $counter = 1;
-                            while ($user = $users_result->fetch_assoc()) {
-                                // Get completion timestamp
-                                $time_sql = "SELECT MAX(submitted_at) as last_submit FROM answers 
-                                            WHERE user_id = ? AND question_id IN (
-                                                SELECT q.id FROM questions q
-                                                JOIN questionnaires qn ON q.questionnaire_id = qn.id
-                                                WHERE qn.event_id = ?
-                                            )";
-                                $stmt2 = $conn->prepare($time_sql);
-                                $stmt2->bind_param("ii", $user['id'], $selected_event_id);
-                                $stmt2->execute();
-                                $time_result = $stmt2->get_result();
-                                $last_submit = $time_result->fetch_assoc()['last_submit'];
-                                
-                                echo '<tr>';
-                                echo '<td>'.$counter++.'</td>';
-                                echo '<td>'.htmlspecialchars($user['username']).'</td>';
-                                echo '<td>'.date('M j, Y g:i a', strtotime($last_submit)).'</td>';
-                                echo '</tr>';
-                            }
-                            
-                            echo '</tbody></table>';
-                            echo '</div></div></div>';
-                        }
-                        $stmt->close();
-                    }
-                    ?>
-                <?php else: ?>
-                    <div class="alert alert-warning">No questionnaires found for the selected event.</div>
-                <?php endif; ?>
-            <?php else: ?>
-                <div class="alert alert-info">Please select an event to view its report.</div>
+            <?php else : ?>
+                <div class="alert alert-warning">No questions found for this event.</div>
             <?php endif; ?>
-        </div>
-
-        <script>
-            function printReport() {
-                window.print();
+  <!-- Completed Evaluations Section (Moved Outside Questions Check) -->
+  <?php
+        $total_questions = count($questions);
+        if ($total_questions > 0) {
+            // Fetch and display users who completed all questions
+            $user_sql = "SELECT u.id, u.username, COUNT(a.id) as answered 
+                        FROM users u
+                        JOIN answers a ON u.id = a.user_id
+                        WHERE a.question_id IN (
+                            SELECT q.id FROM questions q
+                            JOIN questionnaires qn ON q.questionnaire_id = qn.id
+                            WHERE qn.event_id = ?
+                        )
+                        GROUP BY u.id
+                        HAVING answered = ?";
+            
+            $stmt = $conn->prepare($user_sql);
+            $stmt->bind_param("ii", $selected_event_id, $total_questions);
+            $stmt->execute();
+            $users_result = $stmt->get_result();
+            
+            if ($users_result->num_rows > 0) {
+                echo '<div class="card mt-4">';
+                echo '<div class="card-header">';
+                echo '<h5 class="card-title"><i class="bi bi-check-circle"></i> Completed Evaluations</h5>';
+                echo '</div>';
+                echo '<div class="card-body">';
+                echo '<div class="table-responsive">';
+                echo '<table class="table table-striped">';
+                echo '<thead>';
+                echo '<tr><th>#</th><th>Participant</th><th>Completed At</th></tr>';
+                echo '</thead><tbody>';
+                
+                $counter = 1;
+                while ($user = $users_result->fetch_assoc()) {
+                    // Get completion timestamp
+                    $time_sql = "SELECT MAX(submitted_at) as last_submit FROM answers 
+                                WHERE user_id = ? AND question_id IN (
+                                    SELECT q.id FROM questions q
+                                    JOIN questionnaires qn ON q.questionnaire_id = qn.id
+                                    WHERE qn.event_id = ?
+                                )";
+                    $stmt2 = $conn->prepare($time_sql);
+                    $stmt2->bind_param("ii", $user['id'], $selected_event_id);
+                    $stmt2->execute();
+                    $time_result = $stmt2->get_result();
+                    $last_submit = $time_result->fetch_assoc()['last_submit'];
+                    
+                    echo '<tr>';
+                    echo '<td>'.$counter++.'</td>';
+                    echo '<td>'.htmlspecialchars($user['username']).'</td>';
+                    echo '<td>'.date('M j, Y g:i a', strtotime($last_submit)).'</td>';
+                    echo '</tr>';
+                }
+                
+                echo '</tbody></table>';
+                echo '</div></div></div>';
             }
-        </script>
-    </div>
-</body>
-</html>
+            $stmt->close();
+        }
+        ?>
+    <?php else: ?>
+        <div class="alert alert-warning">No questionnaires found for the selected event.</div>
+    <?php endif; ?>
+<?php else: ?>
+    <div class="alert alert-info">Please select an event to view its report.</div>
+<?php endif; ?>

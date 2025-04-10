@@ -2,109 +2,158 @@
 session_start();
 require_once 'config.php';
 
-if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'admin') {
+if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
-if (!isset($_GET['id'])) {
+$current_page = basename($_SERVER['PHP_SELF']);
+$user_type = $_SESSION['user_type'] ?? 'user';
+$dashboardLink = match($user_type) {
+    'admin' => 'admin_dashboard.php',
+    'staff' => 'staff_dashboard.php',
+    default => 'user_dashboard.php'
+};
+
+// Get questionnaire ID from URL
+$questionnaire_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+
+if ($questionnaire_id <= 0) {
     header("Location: admin_questionnaires.php");
     exit();
 }
 
-$questionnaire_id = $_GET['id'];
+// Initialize edited questions array
+$edited_questions = $_SESSION['questionnaire_edits'][$questionnaire_id] ?? [];
 
 // Fetch questionnaire details
-$stmt = $conn->prepare("SELECT * FROM questionnaires WHERE id = ?");
-$stmt->bind_param("i", $questionnaire_id);
-$stmt->execute();
-$questionnaire = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-if (!$questionnaire) {
-    header("Location: admin_questionnaires.php");
-    exit();
-}
-
-// Fetch existing questions
-$stmt = $conn->prepare("SELECT * FROM questions WHERE questionnaire_id = ?");
+$questionnaire = [];
+$stmt = $conn->prepare("SELECT q.*, e.event_name 
+                       FROM questionnaires q 
+                       LEFT JOIN events e ON q.event_id = e.id 
+                       WHERE q.id = ?");
 $stmt->bind_param("i", $questionnaire_id);
 $stmt->execute();
 $result = $stmt->get_result();
-$existing_questions = $result->fetch_all(MYSQLI_ASSOC);
+if ($result->num_rows > 0) {
+    $questionnaire = $result->fetch_assoc();
+} else {
+    header("Location: admin_questionnaires.php");
+    exit();
+}
 $stmt->close();
 
-// Fetch approved events
-$sql = "SELECT id, event_name FROM events WHERE status='Approved'";
-$result = $conn->query($sql);
-$events = [];
-if ($result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        $events[] = $row;
+// Fetch questions for this questionnaire
+$questions = [];
+$stmt = $conn->prepare("SELECT * FROM questions WHERE questionnaire_id = ? ORDER BY id");
+$stmt->bind_param("i", $questionnaire_id);
+$stmt->execute();
+$result = $stmt->get_result();
+while ($row = $result->fetch_assoc()) {
+    // Use edited text if available
+    if (isset($edited_questions[$row['id']])) {
+        $row['question_text'] = $edited_questions[$row['id']];
     }
+    $questions[] = $row;
 }
+$stmt->close();
+
+// Fetch approved events from the database
+$stmt = $conn->prepare("SELECT id, event_name FROM events WHERE status='Approved'");
+$stmt->execute();
+$result = $stmt->get_result();
+$events = [];
+while ($row = $result->fetch_assoc()) {
+    $events[] = $row;
+}
+$stmt->close();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Handle form submission
     $event_id = $_POST['event_id'];
     $title = $_POST['title'];
     $description = $_POST['description'];
-    $questions = $_POST['questions'];
-
-    // Update questionnaire
-    $stmt = $conn->prepare("UPDATE questionnaires SET event_id=?, title=?, description=? WHERE id=?");
-    $stmt->bind_param("issi", $event_id, $title, $description, $questionnaire_id);
-    $stmt->execute();
-    $stmt->close();
-
-    // Track existing question IDs
-    $existing_ids = [];
-    foreach ($existing_questions as $q) {
-        $existing_ids[] = $q['id'];
-    }
-
-    $updated_ids = [];
+    $questions_to_add = $_POST['questions'] ?? [];
+    $questions_to_keep = $_POST['existing_questions'] ?? [];
+    $edited_questions = $_POST['edited_questions'] ?? [];
     
-    foreach ($questions as $question) {
-        if (!empty($question['text'])) {
-            if (isset($question['id']) && !empty($question['id'])) {
-                // Update existing question
-                $stmt = $conn->prepare("UPDATE questions SET question_text=?, question_type=? WHERE id=?");
-                $stmt->bind_param("ssi", $question['text'], $question['type'], $question['id']);
-                $updated_ids[] = $question['id'];
-            } else {
-                // Insert new question
-                $stmt = $conn->prepare("INSERT INTO questions (questionnaire_id, question_text, question_type) VALUES (?, ?, ?)");
-                $stmt->bind_param("iss", $questionnaire_id, $question['text'], $question['type']);
+    // Debug - Print received data
+    // echo "<pre>"; print_r($_POST); echo "</pre>"; exit;
+
+    // Start transaction for atomic updates
+    $conn->begin_transaction();
+
+    try {
+        // Update questionnaire in the database
+        $stmt = $conn->prepare("UPDATE questionnaires 
+                               SET event_id = ?, title = ?, description = ? 
+                               WHERE id = ?");
+        $stmt->bind_param("issi", $event_id, $title, $description, $questionnaire_id);
+        $stmt->execute();
+        $stmt->close();
+
+        // Process existing questions
+        if (!empty($questions_to_keep)) {
+            // First update all edited questions
+            foreach ($edited_questions as $question_id => $new_text) {
+                $question_id = intval($question_id); // Ensure it's an integer
+                $new_text = trim($new_text);
+                if (!empty($new_text)) {
+                    $stmt = $conn->prepare("UPDATE questions SET question_text = ? WHERE id = ? AND questionnaire_id = ?");
+                    $stmt->bind_param("sii", $new_text, $question_id, $questionnaire_id);
+                    $stmt->execute();
+                    $stmt->close();
+                }
             }
+
+            // Then delete questions not in the keep list
+            $placeholders = implode(',', array_fill(0, count($questions_to_keep), '?'));
+            $types = str_repeat('i', count($questions_to_keep));
+            $stmt = $conn->prepare("DELETE FROM questions 
+                                   WHERE questionnaire_id = ? 
+                                   AND id NOT IN ($placeholders)");
+            $stmt->bind_param("i" . $types, $questionnaire_id, ...$questions_to_keep);
+            $stmt->execute();
+            $stmt->close();
+        } else {
+            // If no questions to keep, delete all existing questions
+            $stmt = $conn->prepare("DELETE FROM questions WHERE questionnaire_id = ?");
+            $stmt->bind_param("i", $questionnaire_id);
             $stmt->execute();
             $stmt->close();
         }
-    }
 
-    // Delete removed questions
-    $deleted_ids = array_diff($existing_ids, $updated_ids);
-    if (!empty($deleted_ids)) {
-        try {
-            $conn->begin_transaction();
-            
-            // First delete associated answers
-            $ids = implode(',', $deleted_ids);
-            $conn->query("DELETE FROM answers WHERE question_id IN ($ids)");
-            
-            // Then delete the questions
-            $conn->query("DELETE FROM questions WHERE id IN ($ids)");
-            
-            $conn->commit();
-        } catch (Exception $e) {
-            $conn->rollback();
-            die("Error deleting questions: " . $e->getMessage());
+        // Add new questions
+        foreach ($questions_to_add as $question_text) {
+            $question_text = trim($question_text);
+            if (!empty($question_text)) {
+                $stmt = $conn->prepare("INSERT INTO questions (questionnaire_id, question_text, question_type) 
+                                       VALUES (?, ?, 'text')");
+                $stmt->bind_param("is", $questionnaire_id, $question_text);
+                $stmt->execute();
+                $stmt->close();
+            }
         }
+
+        // Commit transaction
+        $conn->commit();
+
+        // Clear the session edits after successful save
+        if (isset($_SESSION['questionnaire_edits'][$questionnaire_id])) {
+            unset($_SESSION['questionnaire_edits'][$questionnaire_id]);
+        }
+
+        $_SESSION['success_message'] = "Questionnaire updated successfully!";
+        header("Location: admin_questionnaires.php");
+        exit();
+    } catch (Exception $e) {
+        // Rollback transaction on error
+        $conn->rollback();
+        $_SESSION['error_message'] = "Error updating questionnaire: " . $e->getMessage();
+        header("Location: edit_questionnaire.php?id=" . $questionnaire_id);
+        exit();
     }
-
-    echo "<script>alert('Questionnaire updated successfully!'); window.location.href='admin_questionnaires.php';</script>";
 }
-
-include 'sidebar.php';
 ?>
 
 <!DOCTYPE html>
@@ -115,7 +164,7 @@ include 'sidebar.php';
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
-    <title>Add Questionnaire</title>
+    <title>Edit Questionnaire</title>
     <style>
         body {
             display: flex;
@@ -168,20 +217,17 @@ include 'sidebar.php';
             border-radius: 8px;
             margin-bottom: 20px;
         }
-        .main-container form {
+        .main-container {
             display: flex;
             gap: 20px;
-            width: 100%;
-            flex-wrap: wrap;
         }
         .form-container {
             background: #ffffff;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
-            flex: 2;
-            min-width: 400px;
-            max-width: 65%;
+            flex: 1;
+            max-width: 60%;
         }
         .question-list-container {
             background: #ffffff;
@@ -190,10 +236,6 @@ include 'sidebar.php';
             box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
             flex: 1;
             max-width: 35%;
-            height: calc(100vh - 200px);
-            overflow-y: auto;
-            position: sticky;
-            top: 20px;
         }
         .question-input {
             margin-bottom: 15px;
@@ -220,43 +262,71 @@ include 'sidebar.php';
             font-style: italic;
             padding: 20px;
         }
-
-        .likert-stats {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
+        .existing-question {
+            background-color: #e9f7ef;
         }
-
-        .distribution-row {
-            margin-bottom: 10px;
+        .edit-highlight {
+            animation: highlight 2s;
         }
-
-        .distribution-row span {
-            display: inline-block;
-            width: 80px;
+        /* Add style for editable content */
+        .editable-content {
+            cursor: pointer;
+            padding: 3px;
+            border-radius: 3px;
         }
-
-        .progress {
-            background: #e9ecef;
-            border-radius: 4px;
-            overflow: hidden;
+        .editable-content:hover {
+            background-color: #f0f0f0;
         }
-
-        .progress-bar {
-            background: #293CB7;
-            transition: width 0.3s ease;
+        .edit-mode {
+            width: 100%;
+            margin-right: 70px;
         }
-
-        .response-question .badge {
-            font-size: 0.75em;
-            vertical-align: middle;
-            margin-left: 10px;
+        @keyframes highlight {
+            0% { background-color: #ffff99; }
+            100% { background-color: #e9f7ef; }
         }
     </style>
 </head>
 <body>
-<?php include 'sidebar.php'; ?>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h4>AU JAS</h4>
+        
+        <!-- Dashboard Link -->
+        <a href="<?= $dashboardLink ?>" class="<?= ($current_page == $dashboardLink) ? 'active' : '' ?>">
+            <i class="bi bi-house-door"></i> Dashboard
+        </a>
+
+        <!-- Event Calendar (common for all) -->
+        <a href="admin_Event Calendar.php" class="<?= ($current_page == 'admin_Event Calendar.php') ? 'active' : '' ?>">
+            <i class="bi bi-calendar"></i> Event Calendar
+        </a>
+
+        <?php if($user_type == 'admin') : ?>
+            <!-- Admin-only links -->
+            <a href="admin_Event Management.php" class="<?= ($current_page == 'admin_Event Management.php') ? 'active' : '' ?>">
+                <i class="bi bi-gear"></i> Event Management
+            </a>
+            <a href="admin_user management.php" class="<?= ($current_page == 'admin_user management.php') ? 'active' : '' ?>">
+                <i class="bi bi-people"></i> User Management
+            </a>
+        <?php elseif($user_type == 'staff') : ?>
+            <!-- Staff-only links -->
+            <a href="staff_event_management.php" class="<?= ($current_page == 'staff_event_management.php') ? 'active' : '' ?>">
+                <i class="bi bi-ticket-perforated"></i> Event Submissions
+            </a>
+        <?php endif; ?>
+
+        <!-- Questionnaires (common for all) -->
+        <a href="admin_questionnaires.php" class="<?= ($current_page == 'admin_questionnaires.php') ? 'active' : '' ?>">
+            <i class="bi bi-clipboard"></i> Questionnaires
+        </a>
+
+        <!-- Reports (common for all) -->
+        <a href="admin_reports.php" class="<?= ($current_page == 'reports.php') ? 'active' : '' ?>">
+            <i class="bi bi-file-earmark-text"></i> Reports
+        </a>
+    </div>
 
     <div class="content">
         <nav class="navbar navbar-light">
@@ -275,10 +345,18 @@ include 'sidebar.php';
             </div>
         </nav>
 
+        <?php if (isset($_SESSION['error_message'])) : ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?= $_SESSION['error_message'] ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            <?php unset($_SESSION['error_message']); ?>
+        <?php endif; ?>
+
         <div class="main-container">
-            <form method="POST" action="edit_questionnaire.php?id=<?= $questionnaire_id ?>" id="questionnaireForm" class="d-flex gap-3 w-100">
-                <!-- Left Column - Form Inputs -->
-                <div class="form-container flex-grow-1">
+            <!-- Form Container - Left Side -->
+            <div class="form-container">
+                <form method="POST" action="edit_questionnaire.php?id=<?= $questionnaire_id ?>" id="questionnaireForm">
                     <div class="mb-3">
                         <label for="event_id" class="form-label">Select Event</label>
                         <select class="form-control" id="event_id" name="event_id" required>
@@ -292,8 +370,8 @@ include 'sidebar.php';
                     </div>
                     <div class="mb-3">
                         <label for="title" class="form-label">Questionnaire Title</label>
-                        <input type="text" class="form-control" id="title" name="title" required 
-                               value="<?= htmlspecialchars($questionnaire['title']) ?>">
+                        <input type="text" class="form-control" id="title" name="title" 
+                               value="<?= htmlspecialchars($questionnaire['title']) ?>" required>
                     </div>
                     <div class="mb-3">
                         <label for="description" class="form-label">Description</label>
@@ -301,231 +379,245 @@ include 'sidebar.php';
                     </div>
                     <div id="questions-container">
                         <div class="question-input">
-                            <label class="form-label">Add Question</label>
+                            <label for="question1" class="form-label">Add New Question</label>
                             <div class="input-group mb-3">
-                                <input type="text" class="form-control" id="questionText" placeholder="Enter question">
-                                <select class="form-select" id="questionType" style="max-width: 200px;">
-                                    <option value="text">Open-ended</option>
-                                    <option value="likert">Likert Scale (1-5)</option>
-                                </select>
-                                <button class="btn btn-outline-success" type="button" onclick="addQuestionToList()">
-                                    <i class="bi bi-plus-lg"></i> Add
-                                </button>
+                                <input type="text" class="form-control" id="question1" name="temp_question">
+                                <button class="btn btn-outline-success" type="button" onclick="addQuestionToList()">Add</button>
                             </div>
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary mt-3">
-                        <i class="bi bi-save"></i> Update Questionnaire
-                    </button>
-                </div>
+                    <button type="submit" class="btn btn-primary">Update Questionnaire</button>
+                    <a href="admin_questionnaires.php" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
 
-                <!-- Right Column - Question List -->
-                <div class="question-list-container">
-                    <h5>Question List</h5>
-                    <div id="question-list">
-                        <?php if (empty($existing_questions)) : ?>
-                            <div class="no-questions">No questions added yet</div>
-                        <?php else : ?>
-                            <?php foreach ($existing_questions as $index => $question) : ?>
-                                <div class="question-item">
-                                    <div class="question-text">
-                                        <?= $index + 1 ?>. <?= htmlspecialchars($question['question_text']) ?>
-                                        <span class="badge bg-secondary"><?= $question['question_type'] ?></span>
-                                    </div>
-                                    <div class="question-actions">
-                                        <button class="btn btn-sm btn-outline-primary" type="button" onclick="editQuestion(event)">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteQuestion(event)">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </div>
-                                    <input type="hidden" name="questions[<?= $index ?>][id]" value="<?= $question['id'] ?>">
-                                    <input type="hidden" name="questions[<?= $index ?>][text]" value="<?= htmlspecialchars($question['question_text']) ?>">
-                                    <input type="hidden" name="questions[<?= $index ?>][type]" value="<?= $question['question_type'] ?>">
+            <!-- Question List Container - Right Side -->
+            <div class="question-list-container">
+                <h5>Question List</h5>
+                <div id="question-list">
+                    <?php if (empty($questions)): ?>
+                        <div class="no-questions">No questions added yet</div>
+                    <?php else: ?>
+                        <?php foreach ($questions as $question): ?>
+                            <div class="question-item existing-question" data-id="<?= $question['id'] ?>">
+                                <div class="question-text editable-content" onclick="makeEditable(this, <?= $question['id'] ?>)"><?= htmlspecialchars($question['question_text']) ?></div>
+                                <div class="question-actions">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="editExistingQuestion(<?= $question['id'] ?>, '<?= addslashes($question['question_text']) ?>')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteExistingQuestion(<?= $question['id'] ?>)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
                                 </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
+                                <input type="hidden" name="existing_questions[]" value="<?= $question['id'] ?>" form="questionnaireForm">
+                                <!-- Always include an input for edited questions, even if not edited yet -->
+                                <input type="hidden" name="edited_questions[<?= $question['id'] ?>]" 
+                                       value="<?= htmlspecialchars($question['question_text']) ?>" 
+                                       id="edited_question_<?= $question['id'] ?>"
+                                       form="questionnaireForm">
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
 
     <script>
-        // Similar JavaScript as add_questionnaire.php with edit capabilities
-        let questions = <?= json_encode(array_map(function($q) {
-        return [
-            'id' => $q['id'],
-            'text' => $q['question_text'],
-            'type' => $q['question_type']
-        ];
-    }, $existing_questions)) ?>;
-        document.addEventListener('DOMContentLoaded', function() {
-            updateQuestionList();
-        });
-
-        function updateQuestionList() {
-            const list = document.getElementById('question-list');
-            list.innerHTML = questions.length > 0 ? '' : '<div class="no-questions">No questions added yet</div>';
-
-            questions.forEach((q, index) => {
-                const questionEl = document.createElement('div');
-                questionEl.className = 'question-item';
-                questionEl.innerHTML = `
-                    <div class="question-text">
-                        ${index + 1}. ${escapeHtml(q.text)}
-                        <span class="badge bg-secondary">${q.type}</span>
-                    </div>
-                    <div class="question-actions">
-                        <button class="btn btn-sm btn-outline-primary" onclick="editQuestion(${q.id})">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteQuestion(${q.id})">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                    <input type="hidden" name="questions[${index}][id]" value="${q.id || ''}">
-                    <input type="hidden" name="questions[${index}][text]" value="${escapeHtml(q.text)}">
-                    <input type="hidden" name="questions[${index}][type]" value="${q.type}">
-                `;
-                list.appendChild(questionEl);
-            });
-        }
-
-        // Include the rest of the JavaScript functions from add_questionnaire.php
-        // ... (same JavaScript as add_questionnaire.php with edit support) ...
-
-        function escapeHtml(unsafe) {
-        return unsafe
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-
-       let questionCount = 0;
-        let editingQuestionId = null;
+        let questionCount = 0;
+        const questions = [];
 
         function addQuestionToList() {
-        const questionText = document.getElementById('questionText').value.trim();
-        const questionType = document.getElementById('questionType').value;
-
-        if (!questionText) {
-            alert('Please enter a question');
-            return;
+            const questionInput = document.getElementById('question1');
+            const questionText = questionInput.value.trim();
+            
+            if (questionText === '') {
+                alert('Please enter a question');
+                return;
+            }
+            
+            questionCount++;
+            questions.push({
+                id: questionCount,
+                text: questionText
+            });
+            
+            updateQuestionList();
+            questionInput.value = '';
+            questionInput.focus();
         }
 
-        questions.push({
-            id: Date.now(),
-            text: questionText,
-            type: questionType
-        });
+        function updateQuestionList() {
+            const questionList = document.getElementById('question-list');
+            
+            // First, keep all existing questions
+            let html = '';
+            const existingQuestions = document.querySelectorAll('.existing-question');
+            existingQuestions.forEach(question => {
+                html += question.outerHTML;
+            });
+            
+            // Then add new questions
+            if (questions.length > 0 || existingQuestions.length === 0) {
+                if (existingQuestions.length === 0 && questions.length === 0) {
+                    html = '<div class="no-questions">No questions added yet</div>';
+                } else {
+                    questions.forEach((question, index) => {
+                        html += `
+                            <div class="question-item" data-id="${question.id}">
+                                <div class="question-text">${existingQuestions.length + index + 1}. ${escapeHtml(question.text)}</div>
+                                <div class="question-actions">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="editQuestion(${question.id})">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteQuestion(${question.id})">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                                <input type="hidden" name="questions[]" value="${escapeHtml(question.text)}" form="questionnaireForm">
+                            </div>
+                        `;
+                    });
+                }
+            }
+            
+            questionList.innerHTML = html;
+        }
 
-        updateQuestionList();
-        document.getElementById('questionText').value = '';
-    }
+        // New function to make a question text directly editable
+        function makeEditable(element, questionId) {
+            // Check if already in edit mode
+            if (element.querySelector('input')) return;
+            
+            const currentText = element.textContent;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentText;
+            input.className = 'form-control edit-mode';
+            input.setAttribute('data-original', currentText);
+            
+            // Replace the text with the input
+            element.innerHTML = '';
+            element.appendChild(input);
+            input.focus();
+            
+            // Add event listeners for saving on enter or blur
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    saveInlineEdit(element, input, questionId);
+                }
+            });
+            
+            input.addEventListener('blur', function() {
+                saveInlineEdit(element, input, questionId);
+            });
+        }
+        
+        // Function to save the inline edit
+        function saveInlineEdit(element, input, questionId) {
+            const newText = input.value.trim();
+            if (newText !== '' && newText !== input.getAttribute('data-original')) {
+                // Update the displayed text
+                element.textContent = newText;
+                element.parentNode.classList.add('edit-highlight');
+                
+                // Update the hidden input value
+                const hiddenInput = document.getElementById(`edited_question_${questionId}`);
+                if (hiddenInput) {
+                    hiddenInput.value = newText;
+                }
+                
+                setTimeout(() => {
+                    element.parentNode.classList.remove('edit-highlight');
+                }, 2000);
+            } else {
+                // Restore original text if empty or unchanged
+                element.textContent = input.getAttribute('data-original');
+            }
+        }
 
-    function updateQuestionList() {
-        const list = document.getElementById('question-list');
-        list.innerHTML = questions.length > 0 ? '' : '<div class="no-questions">No questions added yet</div>';
-    
-        questions.forEach((q, index) => {
-            const questionEl = document.createElement('div');
-            questionEl.className = 'question-item';
-            questionEl.innerHTML = `
-                <div class="question-text">
-                    ${index + 1}. ${escapeHtml(q.text)}
-                    <span class="badge bg-secondary">${q.type}</span>
-                </div>
-                <div class="question-actions">
-                    <button type="button" class="btn btn-sm btn-outline-primary" 
-                            onclick="editQuestion(${q.id})">
-                        <i class="bi bi-pencil"></i>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" 
-                            onclick="deleteQuestion(${q.id})">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-                <input type="hidden" name="questions[${index}][id]" value="${q.id || ''}">
-                <input type="hidden" name="questions[${index}][text]" value="${escapeHtml(q.text)}">
-                <input type="hidden" name="questions[${index}][type]" value="${q.type}">
-            `;
-            list.appendChild(questionEl);
-        });
-    }
+        function editQuestion(id) {
+            const question = questions.find(q => q.id === id);
+            if (!question) return;
+            
+            const newText = prompt('Edit question:', question.text);
+            if (newText !== null) {
+                const trimmedText = newText.trim();
+                if (trimmedText !== '') {
+                    question.text = trimmedText;
+                    updateQuestionList();
+                } else {
+                    alert('Question text cannot be empty');
+                }
+            }
+        }
 
-function editQuestion(id) {
-    const question = questions.find(q => q.id === id);
-    if (!question) return;
+        function editExistingQuestion(id, currentText) {
+            const newText = prompt('Edit question:', currentText);
+            if (newText !== null) {
+                const trimmedText = newText.trim();
+                if (trimmedText !== '') {
+                    // Find the question in the DOM
+                    const questionItem = document.querySelector(`.existing-question[data-id="${id}"]`);
+                    if (questionItem) {
+                        // Update the displayed text
+                        const questionText = questionItem.querySelector('.question-text');
+                        if (questionText) {
+                            questionText.textContent = trimmedText;
+                        }
+                        
+                        // Update the hidden input value
+                        const hiddenInput = document.getElementById(`edited_question_${id}`);
+                        if (hiddenInput) {
+                            hiddenInput.value = trimmedText;
+                        }
+                        
+                        // Add visual feedback
+                        questionItem.classList.add('edit-highlight');
+                        setTimeout(() => {
+                            questionItem.classList.remove('edit-highlight');
+                        }, 2000);
+                    }
+                } else {
+                    alert('Question text cannot be empty');
+                }
+            }
+        }
 
-    // Populate modal fields
-    document.getElementById('editQuestionText').value = question.text;
-    document.getElementById('editQuestionType').value = question.type;
-    editingQuestionId = id;
-    
-    // Show the modal
-    const editModal = new bootstrap.Modal(document.getElementById('editQuestionModal'));
-    editModal.show();
-}
+        function deleteQuestion(id) {
+            if (confirm('Are you sure you want to delete this question?')) {
+                const index = questions.findIndex(q => q.id === id);
+                if (index !== -1) {
+                    questions.splice(index, 1);
+                    updateQuestionList();
+                }
+            }
+        }
 
-function saveEditedQuestion() {
-    const newText = document.getElementById('editQuestionText').value.trim();
-    const newType = document.getElementById('editQuestionType').value;
+        function deleteExistingQuestion(id) {
+            if (confirm('Are you sure you want to delete this question?')) {
+                // Find the question in the DOM and remove it
+                const questionItem = document.querySelector(`.existing-question[data-id="${id}"]`);
+                if (questionItem) {
+                    questionItem.remove();
+                }
+                
+                // If no questions left, show the "no questions" message
+                const questionList = document.getElementById('question-list');
+                if (questionList.children.length === 0) {
+                    questionList.innerHTML = '<div class="no-questions">No questions added yet</div>';
+                }
+            }
+        }
 
-    if (!newText) {
-        alert('Question text cannot be empty');
-        return;
-    }
-
-    const questionIndex = questions.findIndex(q => q.id === editingQuestionId);
-    if (questionIndex > -1) {
-        questions[questionIndex].text = newText;
-        questions[questionIndex].type = newType;
-        updateQuestionList();
-    }
-    
-    // Hide the modal
-    bootstrap.Modal.getInstance(document.getElementById('editQuestionModal')).hide();
-    editingQuestionId = null;
-}
-
-function deleteQuestion(id) {
-    questions = questions.filter(q => q.id !== id);
-    updateQuestionList();
-}
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
     </script>
-
-    <!-- Edit Question Modal -->
-<div class="modal fade" id="editQuestionModal" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Edit Question</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-3">
-          <label for="editQuestionText" class="form-label">Question Text</label>
-          <input type="text" class="form-control" id="editQuestionText" required>
-        </div>
-        <div class="mb-3">
-          <label for="editQuestionType" class="form-label">Question Type</label>
-          <select class="form-select" id="editQuestionType">
-            <option value="text">Open-ended</option>
-            <option value="likert">Likert Scale (1-5)</option>
-          </select>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="saveEditedQuestion()">Save Changes</button>
-      </div>
-    </div>
-  </div>
-</div>
 </body>
 </html>

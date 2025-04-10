@@ -45,8 +45,24 @@ if (isset($_GET['delete_id'])) {
     }
 }
 
+// Modified search logic
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+// Base SQL query
 $sql = "SELECT id, event_name, event_date, event_time, venue FROM events WHERE status='Approved'";
-$result = $conn->query($sql);
+
+// Add search conditions if search parameter exists
+if (!empty($search)) {
+    // Using LIKE for partial text matching and exact matching for ID
+    $sql .= " AND (event_name LIKE ? OR venue LIKE ? OR id = ?)";
+    $stmt = $conn->prepare($sql);
+    $searchParam = "%$search%";  // Add wildcards for LIKE query
+    $stmt->bind_param("ssi", $searchParam, $searchParam, $search);
+    $stmt->execute();
+    $result = $stmt->get_result();
+} else {
+    $result = $conn->query($sql);
+}
 
 if (!$result) {
     die("Query failed: " . $conn->error);
@@ -206,10 +222,26 @@ include 'sidebar.php';
         .search-input {
             border-radius: 6px;
             padding: 8px 15px;
-            padding-right: 40px;
+            padding-right: 70px; /* Increased for both search icon and clear button */
             width: 100%;
         }
         .search-btn {
+            position: absolute;
+            right: 40px; /* Moved to make room for clear button */
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #64748b;
+            z-index: 2;
+            padding: 0;
+            height: 20px;
+            width: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .clear-search {
             position: absolute;
             right: 10px;
             top: 50%;
@@ -224,6 +256,10 @@ include 'sidebar.php';
             display: flex;
             align-items: center;
             justify-content: center;
+            cursor: pointer;
+        }
+        .clear-search:hover {
+            color: #ef4444;
         }
 
         /* Alert Styling */
@@ -255,6 +291,50 @@ include 'sidebar.php';
             }
         }
     </style>
+    <script>
+        // Add debounced search functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.querySelector('input[name="search"]');
+            let searchTimer;
+            
+            if (searchInput) {
+                // Add search debounce
+                searchInput.addEventListener('input', function() {
+                    clearTimeout(searchTimer);
+                    const value = this.value;
+                    
+                    // Only submit if there's actual content and wait 500ms after typing stops
+                    if (value.trim().length > 0) {
+                        searchTimer = setTimeout(() => {
+                            this.form.submit();
+                        }, 500);
+                    }
+                });
+                
+                // Add clear button functionality
+                const clearButton = document.querySelector('.clear-search');
+                if (clearButton) {
+                    clearButton.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        searchInput.value = '';
+                        // Redirect to page without search params
+                        window.location.href = window.location.pathname;
+                    });
+                    
+                    // Show/hide clear button based on input content
+                    if (searchInput.value.length > 0) {
+                        clearButton.style.display = 'flex';
+                    } else {
+                        clearButton.style.display = 'none';
+                    }
+                    
+                    searchInput.addEventListener('input', function() {
+                        clearButton.style.display = this.value.length > 0 ? 'flex' : 'none';
+                    });
+                }
+            }
+        });
+    </script>
 </head>
 <body>
 <?php include 'sidebar.php'; ?>
@@ -312,9 +392,12 @@ include 'sidebar.php';
                 <form method="get" action="" class="d-flex align-items-center">
                     <div class="search-container">
                         <input type="text" name="search" class="form-control search-input" 
-                               placeholder="Search events...">
+                               placeholder="Search by name, venue or ID..." value="<?php echo htmlspecialchars($search); ?>">
                         <button type="submit" class="search-btn">
                             <i class="bi bi-search"></i>
+                        </button>
+                        <button type="button" class="clear-search" <?php echo empty($search) ? 'style="display:none;"' : ''; ?>>
+                            <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                 </form>
@@ -360,7 +443,7 @@ include 'sidebar.php';
                         } else {
                             echo "<tr><td colspan='6' class='text-center py-4'>
                                     <i class='bi bi-inbox' style='font-size: 2rem; color: #94a3b8;'></i>
-                                    <p class='mt-2'>No events available</p>
+                                    <p class='mt-2'>No events found</p>
                                   </td></tr>";
                         }
                         ?>

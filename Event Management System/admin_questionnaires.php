@@ -185,48 +185,54 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
             padding: 6px 10px;
         }
 
+        /* Search Bar - Updated Styling */
         .search-container {
-    position: relative;
-    width: 100%;
-    max-width: 350px;
-}
-.search-input {
-    border-radius: 6px;
-    padding: 8px 15px;
-    padding-right: 40px;
-    width: 100%;
-}
-.search-btn {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: #64748b;
-    z-index: 2;
-    padding: 0;
-    height: 20px;
-    width: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.clear-search {
-    position: absolute;
-    right: 35px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #64748b;
-    cursor: pointer;
-    display: <?php echo !empty($search) ? 'block' : 'none'; ?>;
-    z-index: 2;
-    height: 20px;
-    width: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+            position: relative;
+            width: 100%;
+            max-width: 350px;
+        }
+        .search-input {
+            border-radius: 6px;
+            padding: 8px 15px;
+            padding-right: 70px; /* Increased for both search icon and clear button */
+            width: 100%;
+        }
+        .search-btn {
+            position: absolute;
+            right: 40px; /* Moved to make room for clear button */
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #64748b;
+            z-index: 2;
+            padding: 0;
+            height: 20px;
+            width: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .clear-search {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #64748b;
+            z-index: 2;
+            padding: 0;
+            height: 20px;
+            width: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .clear-search:hover {
+            color: #ef4444;
+        }
 
         /* Alert Styling */
         .alert {
@@ -256,6 +262,50 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
             margin-top: 0.5rem !important;
         }
     </style>
+    <script>
+        // Add debounced search functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.querySelector('input[name="search"]');
+            let searchTimer;
+            
+            if (searchInput) {
+                // Add search debounce
+                searchInput.addEventListener('input', function() {
+                    clearTimeout(searchTimer);
+                    const value = this.value;
+                    
+                    // Only submit if there's actual content and wait 500ms after typing stops
+                    if (value.trim().length > 0) {
+                        searchTimer = setTimeout(() => {
+                            this.form.submit();
+                        }, 500);
+                    }
+                });
+                
+                // Add clear button functionality
+                const clearButton = document.querySelector('.clear-search');
+                if (clearButton) {
+                    clearButton.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        searchInput.value = '';
+                        // Redirect to page without search params
+                        window.location.href = window.location.pathname;
+                    });
+                    
+                    // Show/hide clear button based on input content
+                    if (searchInput.value.length > 0) {
+                        clearButton.style.display = 'flex';
+                    } else {
+                        clearButton.style.display = 'none';
+                    }
+                    
+                    searchInput.addEventListener('input', function() {
+                        clearButton.style.display = this.value.length > 0 ? 'flex' : 'none';
+                    });
+                }
+            }
+        });
+    </script>
 </head>
 <body>
 <?php include 'sidebar.php'; ?>
@@ -309,13 +359,11 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
                     <div class="search-container">
                         <input type="text" name="search" class="form-control search-input" 
                                placeholder="Search questionnaires..." value="<?php echo htmlspecialchars($search); ?>">
-                        <?php if (!empty($search)): ?>
-                            <span class="clear-search" onclick="location.href='?'">
-                                <i class="bi bi-x"></i>
-                            </span>
-                        <?php endif; ?>
                         <button type="submit" class="search-btn">
                             <i class="bi bi-search"></i>
+                        </button>
+                        <button type="button" class="clear-search" <?php echo empty($search) ? 'style="display:none;"' : ''; ?>>
+                            <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                 </form>
@@ -407,17 +455,5 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
             </div>
         </div>
     </div>
-
-    <script>
-        // Show/hide clear search button based on input
-        document.querySelector('input[name="search"]').addEventListener('input', function() {
-            const clearBtn = document.querySelector('.clear-search');
-            if (this.value.trim() !== '') {
-                clearBtn.style.display = 'block';
-            } else {
-                clearBtn.style.display = 'none';
-            }
-        });
-    </script>
 </body>
 </html>

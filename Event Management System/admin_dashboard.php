@@ -36,6 +36,20 @@ $result = $conn->query("SELECT COUNT(*) as cancelled FROM events
                       WHERE status = 'Rejected'");
 if ($result) $counts['cancelled'] = $result->fetch_assoc()['cancelled'];
 
+// Get all events for modals
+$allEvents = $conn->query("SELECT id, event_name, event_date, venue FROM events 
+                        WHERE status = 'Approved' 
+                        ORDER BY event_date");
+
+$upcomingEvents = $conn->query("SELECT id, event_name, event_date, venue FROM events 
+                             WHERE event_date BETWEEN '$weekStart' AND '$weekEnd' 
+                             AND status = 'Approved' 
+                             ORDER BY event_date");
+
+$cancelledEvents = $conn->query("SELECT id, event_name, event_date, venue FROM events 
+                               WHERE status = 'Rejected' 
+                               ORDER BY event_date");
+
 // Get latest events for breaking news
 $latestEvents = $conn->query("SELECT event_name, event_date FROM events 
                            WHERE status = 'Approved'
@@ -340,6 +354,42 @@ include 'sidebar.php';
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
+        /* Modal Styles */
+        .modal-header {
+            background: linear-gradient(135deg, #3949ab, #1e3a8a);
+            color: white;
+            border-radius: 10px 10px 0 0;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .event-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .event-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            transition: all 0.2s ease;
+        }
+        
+        .event-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .event-date {
+            font-weight: 600;
+            color: #3949ab;
+        }
+        
+        .event-venue {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+
         /* Responsive Fix */
         @media (max-width: 768px) {
             .sidebar {
@@ -412,7 +462,7 @@ include 'sidebar.php';
             <div class="container px-0">
                 <div class="row g-4">
                     <div class="col-md-4">
-                        <div class="dashboard-card bg-primary text-white">
+                        <div class="dashboard-card bg-primary text-white" data-bs-toggle="modal" data-bs-target="#allEventsModal">
                             <i class="bi bi-calendar-check card-icon"></i>
                             <h5>Total Events</h5>
                             <div class="card-count" id="totalEvents"><?php echo $counts['total']; ?></div>
@@ -420,7 +470,7 @@ include 'sidebar.php';
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <div class="dashboard-card bg-success text-white">
+                        <div class="dashboard-card bg-success text-white" data-bs-toggle="modal" data-bs-target="#upcomingEventsModal">
                             <i class="bi bi-calendar2-event card-icon"></i>
                             <h5>Upcoming Events</h5>
                             <div class="card-count" id="upcomingEvents"><?php echo $counts['upcoming']; ?></div>
@@ -428,7 +478,7 @@ include 'sidebar.php';
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <div class="dashboard-card bg-danger text-white">
+                        <div class="dashboard-card bg-danger text-white" data-bs-toggle="modal" data-bs-target="#cancelledEventsModal">
                             <i class="bi bi-calendar-x card-icon"></i>
                             <h5>Cancelled Events</h5>
                             <div class="card-count" id="cancelledEvents"><?php echo $counts['cancelled']; ?></div>
@@ -485,6 +535,141 @@ include 'sidebar.php';
                 </table>
             </div>
         </section>
+    </div>
+
+    <!-- All Events Modal -->
+    <div class="modal fade" id="allEventsModal" tabindex="-1" aria-labelledby="allEventsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="allEventsModalLabel">
+                        <i class="bi bi-calendar-check me-2"></i>
+                        All Approved Events (<?php echo $counts['total']; ?>)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="event-list">
+                        <?php if ($allEvents->num_rows > 0): ?>
+                            <?php while ($event = $allEvents->fetch_assoc()): ?>
+                                <div class="event-item">
+                                    <h5><?php echo htmlspecialchars($event['event_name']); ?></h5>
+                                    <div class="event-date">
+                                        <i class="bi bi-calendar3"></i> 
+                                        <?php echo date('F d, Y', strtotime($event['event_date'])); ?>
+                                    </div>
+                                    <div class="event-venue">
+                                        <i class="bi bi-geo-alt"></i> 
+                                        <?php echo htmlspecialchars($event['venue']); ?>
+                                    </div>
+                                    <a href="admin_view_events.php?id=<?= $event['id'] ?>" class="btn-view mt-2">
+                                        <i class="bi bi-eye"></i> View Details
+                                    </a>
+                                </div>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <div class="text-center py-5">
+                                <i class="bi bi-calendar-x display-4 d-block mb-3 text-muted"></i>
+                                <p class="lead">No events found</p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Upcoming Events Modal -->
+    <div class="modal fade" id="upcomingEventsModal" tabindex="-1" aria-labelledby="upcomingEventsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="upcomingEventsModalLabel">
+                        <i class="bi bi-calendar2-event me-2"></i>
+                        Upcoming Events This Week (<?php echo $counts['upcoming']; ?>)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="event-list">
+                        <?php if ($upcomingEvents->num_rows > 0): ?>
+                            <?php while ($event = $upcomingEvents->fetch_assoc()): ?>
+                                <div class="event-item">
+                                    <h5><?php echo htmlspecialchars($event['event_name']); ?></h5>
+                                    <div class="event-date">
+                                        <i class="bi bi-calendar3"></i> 
+                                        <?php echo date('F d, Y', strtotime($event['event_date'])); ?>
+                                    </div>
+                                    <div class="event-venue">
+                                        <i class="bi bi-geo-alt"></i> 
+                                        <?php echo htmlspecialchars($event['venue']); ?>
+                                    </div>
+                                    <a href="admin_view_events.php?id=<?= $event['id'] ?>" class="btn-view mt-2">
+                                        <i class="bi bi-eye"></i> View Details
+                                    </a>
+                                </div>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <div class="text-center py-5">
+                                <i class="bi bi-calendar-x display-4 d-block mb-3 text-muted"></i>
+                                <p class="lead">No upcoming events found</p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Cancelled Events Modal -->
+    <div class="modal fade" id="cancelledEventsModal" tabindex="-1" aria-labelledby="cancelledEventsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cancelledEventsModalLabel">
+                        <i class="bi bi-calendar-x me-2"></i>
+                        Cancelled Events (<?php echo $counts['cancelled']; ?>)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="event-list">
+                        <?php if ($cancelledEvents->num_rows > 0): ?>
+                            <?php while ($event = $cancelledEvents->fetch_assoc()): ?>
+                                <div class="event-item">
+                                    <h5><?php echo htmlspecialchars($event['event_name']); ?></h5>
+                                    <div class="event-date">
+                                        <i class="bi bi-calendar3"></i> 
+                                        <?php echo date('F d, Y', strtotime($event['event_date'])); ?>
+                                    </div>
+                                    <div class="event-venue">
+                                        <i class="bi bi-geo-alt"></i> 
+                                        <?php echo htmlspecialchars($event['venue']); ?>
+                                    </div>
+                                    <a href="admin_view_events.php?id=<?= $event['id'] ?>" class="btn-view mt-2">
+                                        <i class="bi bi-eye"></i> View Details
+                                    </a>
+                                </div>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <div class="text-center py-5">
+                                <i class="bi bi-calendar-x display-4 d-block mb-3 text-muted"></i>
+                                <p class="lead">No cancelled events found</p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
