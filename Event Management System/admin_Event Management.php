@@ -48,8 +48,8 @@ if (isset($_GET['delete_id'])) {
 // Modified search logic
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
-// Base SQL query
-$sql = "SELECT id, event_name, event_date, event_time, venue FROM events WHERE status='Approved'";
+// Base SQL query - Modified to order by created_at DESC to show newest first
+$sql = "SELECT id, event_name, event_date, event_time, venue, created_at FROM events WHERE status='Approved'";
 
 // Add search conditions if search parameter exists
 if (!empty($search)) {
@@ -61,6 +61,8 @@ if (!empty($search)) {
     $stmt->execute();
     $result = $stmt->get_result();
 } else {
+    // Add ORDER BY to show newest events first when not searching
+    $sql .= " ORDER BY created_at DESC";
     $result = $conn->query($sql);
 }
 
@@ -418,9 +420,10 @@ include 'sidebar.php';
                     <tbody>
                         <?php
                         if ($result->num_rows > 0) {
+                            $counter = 1; // Initialize counter at 1
                             while($row = $result->fetch_assoc()) {
                                 echo "<tr>";
-                                echo "<td>" . htmlspecialchars($row['id']) . "</td>";
+                                echo "<td>" . $counter . "</td>"; // Use counter instead of id
                                 echo "<td>" . htmlspecialchars($row['event_name']) . "</td>";
                                 echo "<td>" . htmlspecialchars($row['event_date']) . "</td>";
                                 echo "<td>" . htmlspecialchars($row['event_time']) . "</td>";
@@ -439,6 +442,7 @@ include 'sidebar.php';
                                         </div>
                                       </td>";
                                 echo "</tr>";
+                                $counter++; // Increment counter for next row
                             }
                         } else {
                             echo "<tr><td colspan='6' class='text-center py-4'>

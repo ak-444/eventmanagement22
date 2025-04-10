@@ -86,6 +86,13 @@ if ($selected_event_id > 0) {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <title>Event Reports</title>
+
+    <script>
+        function printReport() {
+            // Open the print dialog
+            window.print();
+        }
+    </script>
     <style>
         :root {
             --primary-color: #293CB7;
@@ -635,6 +642,8 @@ if ($selected_event_id > 0) {
                 <div class="report-date">
                     <i class="bi bi-calendar3"></i> Report generated on: <?= date('F j, Y, g:i a') ?>
                 </div>
+
+            
                 
                 <?php if (!empty($questionnaires)): ?>
             <!-- Summary cards and questionnaires table -->
@@ -841,9 +850,13 @@ if ($selected_event_id > 0) {
             $stmt->close();
         }
         ?>
+
+
     <?php else: ?>
         <div class="alert alert-warning">No questionnaires found for the selected event.</div>
     <?php endif; ?>
 <?php else: ?>
     <div class="alert alert-info">Please select an event to view its report.</div>
 <?php endif; ?>
+
+
